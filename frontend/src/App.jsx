@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import { Toaster } from 'react-hot-toast'; // <--- THIS WAS MISSING
+import { Toaster } from 'react-hot-toast';
 
 import Login from './components/Login';
 import AdminDashboard from './components/AdminDashboard';
@@ -10,10 +10,10 @@ import CitizenDetails from './components/CitizenDetails';
 import AccountStatement from './components/AccountStatement';
 import ExpiryReports from './components/ExpiryReports';
 import BackupPage from './components/BackupPage';
+
 function App() {
   return (
     <BrowserRouter>
-      {/* This enables the notifications */}
       <Toaster position="bottom-right" reverseOrder={false} />
 
       <Routes>

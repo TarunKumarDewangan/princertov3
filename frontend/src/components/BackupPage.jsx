@@ -1,11 +1,9 @@
 import { useState } from "react";
-import axios from "axios";
+import api from "../api"; // <--- Importing Central API Config
 import toast from "react-hot-toast";
 import UserNavbar from "./UserNavbar";
 
 export default function BackupPage() {
-    const token = localStorage.getItem("token");
-
     // Selection State
     const [selection, setSelection] = useState({
         master: true, // Combined Record
@@ -27,7 +25,7 @@ export default function BackupPage() {
         setSelection(prev => ({ ...prev, [key]: !prev[key] }));
     };
 
-    // Toggle All
+    // Toggle All Checkboxes
     const handleSelectAll = () => {
         const allSelected = Object.values(selection).every(v => v);
         const newState = {};
@@ -35,7 +33,7 @@ export default function BackupPage() {
         setSelection(newState);
     };
 
-    // Handle Download (Updated to use Secure Link)
+    // Handle Download (Using Signed URL to fix IDM/CORS issues)
     const handleDownload = async () => {
         const activeKeys = Object.keys(selection).filter(k => selection[k]);
 
@@ -49,10 +47,8 @@ export default function BackupPage() {
 
         try {
             // 1. Request a Secure Download Link from the Backend
-            // We send the token here to verify the user
-            const res = await axios.get(`http://127.0.0.1:8000/api/backup/get-link?include=${queryString}`, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
+            // Using 'api.get' automatically handles the Base URL and Token
+            const res = await api.get(`/api/backup/get-link?include=${queryString}`);
 
             // 2. Use the browser to open the link
             // This bypasses Axios file handling, fixing IDM/CORS issues
