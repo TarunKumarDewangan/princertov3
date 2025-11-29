@@ -26,7 +26,7 @@
 import axios from 'axios';
 
 // IMPORTANT: include /api here because your routes are in routes/api.php
-const BASE_URL = 'https://api.rtodatahub.in/api';
+const BASE_URL = 'https://api.rtodatahub.in';
 
 const api = axios.create({
   baseURL: BASE_URL,
