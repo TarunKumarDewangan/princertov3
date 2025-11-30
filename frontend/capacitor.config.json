@@ -1,0 +1,8 @@
+{
+  "appId": "com.rtodatahub.app",
+  "appName": "RTO Data Hub",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  }
+}
