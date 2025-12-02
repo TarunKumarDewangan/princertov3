@@ -5,24 +5,28 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use App\Models\Citizen;
+use Carbon\Carbon;
+
+// 👇 THIS LINE WAS MISSING OR INCORRECT
+use App\Services\WhatsAppService;
 
 class ExpiryReportController extends Controller
 {
     public function index(Request $request)
     {
+        // ... (Your existing index logic) ...
+        // (Keep the code you already have for index)
         $userId = $request->user()->id;
-
-        // Filters
-        $citizenId = $request->citizen_id; // <--- NEW FILTER
+        $citizenId = $request->citizen_id;
         $name = $request->owner_name;
         $vehicleNo = $request->vehicle_no;
         $docType = $request->doc_type;
         $dateFrom = $request->expiry_from;
         $dateUpto = $request->expiry_upto;
 
-        // Helper to build query
         $buildQuery = function ($table, $typeLabel, $dateCol) use ($userId) {
-            return \Illuminate\Support\Facades\DB::table($table)
+            return DB::table($table)
                 ->join('vehicles', "$table.vehicle_id", '=', 'vehicles.id')
                 ->join('citizens', 'vehicles.citizen_id', '=', 'citizens.id')
                 ->where('citizens.user_id', $userId)
@@ -31,13 +35,11 @@ class ExpiryReportController extends Controller
                     'citizens.name as owner_name',
                     'citizens.mobile_number',
                     'vehicles.registration_no',
-                    \Illuminate\Support\Facades\DB::raw("'$typeLabel' as doc_type"),
+                    DB::raw("'$typeLabel' as doc_type"),
                     "$table.$dateCol as expiry_date"
                 );
         };
 
-        // ... (Queries for all 7 tables remain the same) ...
-        // (Copy the array of queries from previous code)
         $queries = [];
         if (!$docType || $docType == 'Tax')
             $queries[] = $buildQuery('taxes', 'Tax', 'upto_date');
@@ -54,7 +56,6 @@ class ExpiryReportController extends Controller
         if (!$docType || $docType == 'VLTD')
             $queries[] = $buildQuery('vltds', 'VLTD', 'valid_until');
 
-        // Combine Queries
         $mainQuery = null;
         foreach ($queries as $q) {
             if (!$mainQuery)
@@ -63,13 +64,10 @@ class ExpiryReportController extends Controller
                 $mainQuery->union($q);
         }
 
-        $result = \Illuminate\Support\Facades\DB::query()->fromSub($mainQuery, 'combined_table');
+        $result = DB::query()->fromSub($mainQuery, 'combined_table');
 
-        // --- APPLY NEW CITIZEN FILTER ---
-        if ($citizenId) {
+        if ($citizenId)
             $result->where('citizen_id', $citizenId);
-        }
-
         if ($name)
             $result->where('owner_name', 'like', "%$name%");
         if ($vehicleNo)
@@ -84,13 +82,14 @@ class ExpiryReportController extends Controller
         return response()->json($result->paginate(15));
     }
 
+    // --- MANUAL SEND FUNCTION ---
     public function sendNotification(Request $request, WhatsAppService $whatsapp)
     {
         $request->validate([
             'citizen_id' => 'required',
             'registration_no' => 'required',
             'doc_type' => 'required',
-            'expiry_date' => 'required|date'
+            'expiry_date' => 'required'
         ]);
 
         // 1. Get Citizen and their Agent (User)
@@ -118,7 +117,7 @@ class ExpiryReportController extends Controller
             );
             return response()->json(['message' => 'Message Sent Successfully!']);
         } catch (\Exception $e) {
-            return response()->json(['message' => 'Failed to send message.'], 500);
+            return response()->json(['message' => 'Failed to send: ' . $e->getMessage()], 500);
         }
     }
 }
