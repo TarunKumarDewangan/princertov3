@@ -52,4 +52,41 @@ class VehicleController extends Controller
 
         return response()->json(['message' => 'Vehicle Added Successfully', 'vehicle' => $vehicle]);
     }
+
+    public function update(Request $request, $id)
+    {
+        $vehicle = Vehicle::with('citizen')->findOrFail($id);
+
+        if (!$this->checkOwnership($vehicle)) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'registration_no' => 'required|string',
+            'type' => 'nullable|string',
+            'make_model' => 'nullable|string',
+            'chassis_no' => 'nullable|string',
+            'engine_no' => 'nullable|string',
+        ]);
+
+        if ($validator->fails())
+            return response()->json(['errors' => $validator->errors()], 422);
+
+        $vehicle->update($request->all());
+
+        return response()->json(['message' => 'Vehicle Updated Successfully']);
+    }
+
+    public function destroy($id)
+    {
+        $vehicle = Vehicle::with('citizen')->findOrFail($id);
+
+        if (!$this->checkOwnership($vehicle)) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $vehicle->delete();
+
+        return response()->json(['message' => 'Vehicle Deleted Successfully']);
+    }
 }

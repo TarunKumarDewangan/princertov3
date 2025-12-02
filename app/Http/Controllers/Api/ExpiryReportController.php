@@ -83,4 +83,42 @@ class ExpiryReportController extends Controller
 
         return response()->json($result->paginate(15));
     }
+
+    public function sendNotification(Request $request, WhatsAppService $whatsapp)
+    {
+        $request->validate([
+            'citizen_id' => 'required',
+            'registration_no' => 'required',
+            'doc_type' => 'required',
+            'expiry_date' => 'required|date'
+        ]);
+
+        // 1. Get Citizen and their Agent (User)
+        $citizen = Citizen::with('user')->findOrFail($request->citizen_id);
+        $user = $citizen->user; // The Agent
+
+        // 2. Check Credentials
+        if (empty($user->whatsapp_key) || empty($user->whatsapp_host)) {
+            return response()->json(['message' => 'WhatsApp API not configured for this account.'], 400);
+        }
+
+        // 3. Prepare Message (Same format as Cron Job)
+        $mobile = '91' . $citizen->mobile_number;
+        $dateStr = Carbon::parse($request->expiry_date)->format('d-m-Y');
+
+        $message = "प्रिय ग्राहक,\n\nआपके वाहन {$request->registration_no} के {$request->doc_type} की वैधता {$dateStr} को समाप्त हो रही है।\n\nकृपया समय पर नवीनीकरण कराएं और जुर्माने से बचें।\n\nसंपर्क करें:\n{$user->name}";
+
+        // 4. Send
+        try {
+            $whatsapp->sendTextMessage(
+                $mobile,
+                $message,
+                $user->whatsapp_key,
+                $user->whatsapp_host
+            );
+            return response()->json(['message' => 'Message Sent Successfully!']);
+        } catch (\Exception $e) {
+            return response()->json(['message' => 'Failed to send message.'], 500);
+        }
+    }
 }

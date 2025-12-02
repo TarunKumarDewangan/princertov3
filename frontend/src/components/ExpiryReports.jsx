@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import api from "../api";
 import { Link, useSearchParams } from "react-router-dom";
+import toast from "react-hot-toast"; // Ensure Toast is imported
 import UserNavbar from "./UserNavbar";
 
 export default function ExpiryReports() {
@@ -12,6 +13,9 @@ export default function ExpiryReports() {
     });
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(false);
+
+    // State to track which button is "Sending..."
+    const [sendingIndex, setSendingIndex] = useState(null);
 
     const fetchReport = async (pageNo = 1) => {
         setLoading(true);
@@ -30,7 +34,26 @@ export default function ExpiryReports() {
     const handleFilterChange = (e) => setFilters({ ...filters, [e.target.name]: e.target.value });
     const handleSearch = (e) => { e.preventDefault(); fetchReport(1); };
     const handleReset = () => { setFilters({ owner_name: '', vehicle_no: '', doc_type: '', expiry_from: '', expiry_upto: '', citizen_id: '' }); };
+
     const getTypeColor = (type) => { switch (type) { case 'Tax': return 'bg-secondary'; case 'Insurance': return 'bg-primary'; case 'Fitness': return 'bg-info text-dark'; case 'PUCC': return 'bg-success'; case 'Permit': return 'bg-warning text-dark'; default: return 'bg-dark'; } };
+
+    // --- NEW: HANDLE MANUAL SEND ---
+    const handleSendMsg = async (record, index) => {
+        setSendingIndex(index);
+        try {
+            await api.post('/api/reports/send-notification', {
+                citizen_id: record.citizen_id,
+                registration_no: record.registration_no,
+                doc_type: record.doc_type,
+                expiry_date: record.expiry_date
+            });
+            toast.success("WhatsApp Message Sent!");
+        } catch (error) {
+            toast.error(error.response?.data?.message || "Failed to send.");
+        } finally {
+            setSendingIndex(null);
+        }
+    };
 
     return (
         <div className="bg-light min-vh-100">
@@ -59,12 +82,48 @@ export default function ExpiryReports() {
                         <div className="table-responsive">
                             <table className="table table-hover mb-0 align-middle">
                                 <thead className="table-light"><tr><th className="ps-4">Owner</th><th>Mobile</th><th>Vehicle</th><th>Type</th><th>Expiry</th><th>Action</th></tr></thead>
-                                <tbody>{loading?<tr><td colSpan="6" className="text-center py-5">Loading...</td></tr>:data?.data?.length>0?data.data.map((r,i)=>(<tr key={i}><td className="ps-4 fw-bold text-primary">{r.owner_name}</td><td>{r.mobile_number}</td><td className="fw-bold">{r.registration_no}</td><td><span className={`badge rounded-pill ${getTypeColor(r.doc_type)}`}>{r.doc_type}</span></td><td className={new Date(r.expiry_date)<new Date()?"text-danger fw-bold":"text-dark"}>{new Date(r.expiry_date).toLocaleDateString('en-GB')} {new Date(r.expiry_date)<new Date()&&<span className="badge bg-danger ms-2" style={{fontSize:'0.6rem'}}>EXP</span>}</td><td><Link to={`/citizens/${r.citizen_id}`} className="btn btn-sm btn-outline-primary">View</Link></td></tr>)):<tr><td colSpan="6" className="text-center py-5 text-muted">No records found.</td></tr>}</tbody>
+                                <tbody>
+                                    {loading ? <tr><td colSpan="6" className="text-center py-5">Loading...</td></tr> :
+                                    data?.data?.length > 0 ? data.data.map((r, i) => (
+                                        <tr key={i}>
+                                            <td className="ps-4 fw-bold text-primary">{r.owner_name}</td>
+                                            <td>{r.mobile_number}</td>
+                                            <td className="fw-bold">{r.registration_no}</td>
+                                            <td><span className={`badge rounded-pill ${getTypeColor(r.doc_type)}`}>{r.doc_type}</span></td>
+                                            <td className={new Date(r.expiry_date) < new Date() ? "text-danger fw-bold" : "text-dark"}>
+                                                {new Date(r.expiry_date).toLocaleDateString('en-GB')}
+                                                {new Date(r.expiry_date) < new Date() && <span className="badge bg-danger ms-2" style={{ fontSize: '0.6rem' }}>EXP</span>}
+                                            </td>
+                                            <td>
+                                                <div className="d-flex gap-2">
+                                                    {/* VIEW BUTTON */}
+                                                    <Link to={`/citizens/${r.citizen_id}`} className="btn btn-sm btn-outline-primary" title="View Details">
+                                                        <i className="bi bi-eye"></i>
+                                                    </Link>
+
+                                                    {/* SEND BUTTON */}
+                                                    <button
+                                                        className="btn btn-sm btn-success text-white"
+                                                        onClick={() => handleSendMsg(r, i)}
+                                                        disabled={sendingIndex === i}
+                                                        title="Send WhatsApp Reminder"
+                                                    >
+                                                        {sendingIndex === i ? (
+                                                            <span className="spinner-border spinner-border-sm"></span>
+                                                        ) : (
+                                                            <i className="bi bi-whatsapp"></i>
+                                                        )}
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    )) : <tr><td colSpan="6" className="text-center py-5 text-muted">No records found.</td></tr>}
+                                </tbody>
                             </table>
                         </div>
                     </div>
-                    {data&&data.last_page>1&&(
-                        <div className="card-footer bg-white d-flex justify-content-end py-3"><nav><ul className="pagination mb-0"><li className={`page-item ${data.current_page===1?'disabled':''}`}><button className="page-link" onClick={()=>fetchReport(data.current_page-1)}>Prev</button></li><li className="page-item active"><span className="page-link">Page {data.current_page} of {data.last_page}</span></li><li className={`page-item ${data.current_page===data.last_page?'disabled':''}`}><button className="page-link" onClick={()=>fetchReport(data.current_page+1)}>Next</button></li></ul></nav></div>
+                    {data && data.last_page > 1 && (
+                        <div className="card-footer bg-white d-flex justify-content-end py-3"><nav><ul className="pagination mb-0"><li className={`page-item ${data.current_page === 1 ? 'disabled' : ''}`}><button className="page-link" onClick={() => fetchReport(data.current_page - 1)}>Prev</button></li><li className="page-item active"><span className="page-link">Page {data.current_page} of {data.last_page}</span></li><li className={`page-item ${data.current_page === data.last_page ? 'disabled' : ''}`}><button className="page-link" onClick={() => fetchReport(data.current_page + 1)}>Next</button></li></ul></nav></div>
                     )}
                 </div>
             </div>

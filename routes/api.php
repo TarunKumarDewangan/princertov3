@@ -91,6 +91,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/citizens/{id}', [CitizenController::class, 'destroy']);
 
     Route::get('/global-search', [GlobalSearchController::class, 'search']);
+    Route::put('/vehicles/{id}', [VehicleController::class, 'update']);
+    Route::delete('/vehicles/{id}', [VehicleController::class, 'destroy']);
+    Route::post('/reports/send-notification', [App\Http\Controllers\Api\ExpiryReportController::class, 'sendNotification']);
 
     // --- TEST WHATSAPP ROUTE (UPDATED) ---
     Route::post('/admin/test-whatsapp', function (Request $request) {
