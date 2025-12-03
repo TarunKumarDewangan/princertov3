@@ -60,4 +60,33 @@ class Vehicle extends Model
     {
         return $this->hasMany(SpeedGovernor::class);
     }
+
+    public function latestTax()
+    {
+        return $this->hasOne(Tax::class)->latestOfMany();
+    }
+    public function latestInsurance()
+    {
+        return $this->hasOne(Insurance::class)->latestOfMany();
+    }
+    public function latestPucc()
+    {
+        return $this->hasOne(Pucc::class)->latestOfMany();
+    }
+    public function latestFitness()
+    {
+        return $this->hasOne(Fitness::class)->latestOfMany();
+    }
+    public function latestVltd()
+    {
+        return $this->hasOne(Vltd::class)->latestOfMany();
+    }
+    public function latestPermit()
+    {
+        return $this->hasOne(Permit::class)->latestOfMany();
+    }
+    public function latestSpeedGovernor()
+    {
+        return $this->hasOne(SpeedGovernor::class)->latestOfMany();
+    }
 }

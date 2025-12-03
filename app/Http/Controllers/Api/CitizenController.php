@@ -61,11 +61,17 @@ class CitizenController extends Controller
     }
     public function show(Request $request, $id)
     {
-        // Find the citizen matching the ID AND the current logged-in user
-        // Also fetch their 'vehicles' list
         $citizen = Citizen::where('id', $id)
             ->where('user_id', $request->user()->id)
-            ->with('vehicles') // Load vehicles relationship
+            ->with([
+                'vehicles.latestTax',
+                'vehicles.latestInsurance',
+                'vehicles.latestPucc',
+                'vehicles.latestFitness',
+                'vehicles.latestVltd',
+                'vehicles.latestPermit',
+                'vehicles.latestSpeedGovernor'
+            ])
             ->first();
 
         if (!$citizen) {

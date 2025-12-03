@@ -35,6 +35,8 @@ class ExpiryReportController extends Controller
                     'citizens.name as owner_name',
                     'citizens.mobile_number',
                     'vehicles.registration_no',
+                    'vehicles.id as vehicle_id', // <--- Added
+                    "$table.id as doc_id",       // <--- Added (Crucial for updates)
                     DB::raw("'$typeLabel' as doc_type"),
                     "$table.$dateCol as expiry_date"
                 );
@@ -80,6 +82,7 @@ class ExpiryReportController extends Controller
         $result->orderBy('expiry_date', 'asc');
 
         return response()->json($result->paginate(15));
+
     }
 
     // --- MANUAL SEND FUNCTION ---

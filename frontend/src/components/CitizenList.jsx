@@ -2,12 +2,15 @@ import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import toast from "react-hot-toast";
 import UserNavbar from "./UserNavbar";
-import api from "../api"; // Uses Central API
+import api from "../api";
 
 export default function CitizenList() {
   const [citizens, setCitizens] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
+
+  // 1. NEW STATE: For Sorting
+  const [sortOrder, setSortOrder] = useState("newest"); // Options: newest, oldest, az, za
 
   // --- EDIT MODAL STATE ---
   const [showEditModal, setShowEditModal] = useState(false);
@@ -19,14 +22,12 @@ export default function CitizenList() {
   });
   const [isSaving, setIsSaving] = useState(false);
 
-  // 1. Fetch Citizens
   useEffect(() => {
     fetchCitizens();
   }, []);
 
   const fetchCitizens = async () => {
     try {
-      // FIX: Added '/api' prefix here
       const res = await api.get("/api/citizens");
       setCitizens(res.data);
       setLoading(false);
@@ -36,11 +37,9 @@ export default function CitizenList() {
     }
   };
 
-  // 2. Handlers
   const handleDelete = async (id) => {
     if (!confirm("Are you sure? This will delete the citizen and all their vehicles/documents.")) return;
     try {
-      // FIX: Added '/api' prefix here
       await api.delete(`/api/citizens/${id}`);
       toast.success("Citizen Deleted");
       fetchCitizens();
@@ -69,7 +68,6 @@ export default function CitizenList() {
     e.preventDefault();
     setIsSaving(true);
     try {
-      // FIX: Added '/api' prefix here
       await api.put(`/api/citizens/${editingId}`, editForm);
       toast.success("Citizen Updated Successfully!");
       setShowEditModal(false);
@@ -81,13 +79,30 @@ export default function CitizenList() {
     }
   };
 
-  // 3. Search Filter
-  const filteredCitizens = citizens.filter(
+  // 2. FILTER & SORT LOGIC
+  // First, filter by search term
+  const filtered = citizens.filter(
     (citizen) =>
       citizen.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       citizen.mobile_number.includes(searchTerm) ||
       (citizen.city_district && citizen.city_district.toLowerCase().includes(searchTerm.toLowerCase()))
   );
+
+  // Second, Sort the filtered results
+  const finalCitizens = [...filtered].sort((a, b) => {
+    if (sortOrder === "newest") {
+        // Sort by ID descending (Higher ID = Newer)
+        return b.id - a.id;
+        // Or if you want strict date: new Date(b.created_at) - new Date(a.created_at)
+    } else if (sortOrder === "oldest") {
+        return a.id - b.id;
+    } else if (sortOrder === "az") {
+        return a.name.localeCompare(b.name);
+    } else if (sortOrder === "za") {
+        return b.name.localeCompare(a.name);
+    }
+    return 0;
+  });
 
   return (
     <div className="bg-light min-vh-100">
@@ -95,25 +110,44 @@ export default function CitizenList() {
 
       <div className="container mt-4">
         <div className="card border-0 shadow-sm">
+
           {/* Header */}
           <div className="card-header bg-white py-3">
-            <div className="row align-items-center">
-              <div className="col-md-4">
+            <div className="row align-items-center g-2">
+              <div className="col-md-3">
                 <h5 className="mb-0 fw-bold text-primary">Citizen Records</h5>
               </div>
-              <div className="col-md-8 d-flex justify-content-end gap-2">
-                <div className="input-group" style={{ maxWidth: "300px" }}>
+
+              <div className="col-md-9 d-flex justify-content-md-end flex-wrap gap-2">
+
+                {/* 3. SORT DROPDOWN */}
+                <select
+                    className="form-select"
+                    style={{maxWidth: '160px'}}
+                    value={sortOrder}
+                    onChange={(e) => setSortOrder(e.target.value)}
+                >
+                    <option value="newest">Newest First</option>
+                    <option value="oldest">Oldest First</option>
+                    <option value="az">Name (A-Z)</option>
+                    <option value="za">Name (Z-A)</option>
+                </select>
+
+                {/* Search */}
+                <div className="input-group" style={{ maxWidth: "250px" }}>
                   <span className="input-group-text bg-light border-end-0">
                     <i className="bi bi-search text-muted"></i>
                   </span>
                   <input
                     type="text"
                     className="form-control border-start-0 bg-light"
-                    placeholder="Search Name"
+                    placeholder="Search Name..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                   />
                 </div>
+
+                {/* Add Button */}
                 <Link to="/create-citizen" className="btn btn-success text-white fw-semibold">
                   <i className="bi bi-plus-lg me-1"></i> Add New
                 </Link>
@@ -138,8 +172,8 @@ export default function CitizenList() {
                 <tbody>
                   {loading ? (
                     <tr><td colSpan="6" className="text-center py-5"><div className="spinner-border text-primary"></div></td></tr>
-                  ) : filteredCitizens.length > 0 ? (
-                    filteredCitizens.map((citizen, index) => (
+                  ) : finalCitizens.length > 0 ? (
+                    finalCitizens.map((citizen, index) => (
                       <tr key={citizen.id}>
                         <td className="ps-4 fw-bold text-muted">{index + 1}</td>
                         <td>
@@ -177,7 +211,7 @@ export default function CitizenList() {
         </div>
       </div>
 
-      {/* --- EDIT CITIZEN MODAL --- */}
+      {/* EDIT MODAL (Keep as is) */}
       {showEditModal && (
         <div className="modal d-block" style={{ backgroundColor: "rgba(0,0,0,0.5)" }}>
           <div className="modal-dialog modal-lg modal-dialog-centered">
@@ -188,17 +222,17 @@ export default function CitizenList() {
               </div>
               <div className="modal-body p-4">
                 <form onSubmit={handleUpdate}>
-                  {/* Form Rows... same as before */}
                   <div className="row mb-3">
                     <div className="col-md-6">
                       <label className="form-label small fw-bold">Full Name *</label>
-                      <input type="text" className="form-control" value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} required />
+                      <input type="text" className="form-control" value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value.toUpperCase() })} required />
                     </div>
                     <div className="col-md-6">
                       <label className="form-label small fw-bold">Mobile Number *</label>
                       <input type="text" className="form-control" value={editForm.mobile_number} onChange={(e) => setEditForm({ ...editForm, mobile_number: e.target.value })} required />
                     </div>
                   </div>
+                  {/* ... Rest of your form fields ... */}
                   <div className="row mb-3">
                     <div className="col-md-6">
                       <label className="form-label small fw-bold">Email</label>
@@ -218,21 +252,21 @@ export default function CitizenList() {
                     </div>
                     <div className="col-md-8">
                       <label className="form-label small fw-bold">Relation Name</label>
-                      <input type="text" className="form-control" value={editForm.relation_name} onChange={(e) => setEditForm({ ...editForm, relation_name: e.target.value })} />
+                      <input type="text" className="form-control" value={editForm.relation_name} onChange={(e) => setEditForm({ ...editForm, relation_name: e.target.value.toUpperCase() })} />
                     </div>
                   </div>
                   <div className="mb-3">
                     <label className="form-label small fw-bold">Address</label>
-                    <input type="text" className="form-control" value={editForm.address} onChange={(e) => setEditForm({ ...editForm, address: e.target.value })} />
+                    <input type="text" className="form-control" value={editForm.address} onChange={(e) => setEditForm({ ...editForm, address: e.target.value.toUpperCase() })} />
                   </div>
                   <div className="row mb-4">
                     <div className="col-md-6">
                       <label className="form-label small fw-bold">State</label>
-                      <input type="text" className="form-control" value={editForm.state} onChange={(e) => setEditForm({ ...editForm, state: e.target.value })} />
+                      <input type="text" className="form-control" value={editForm.state} onChange={(e) => setEditForm({ ...editForm, state: e.target.value.toUpperCase() })} />
                     </div>
                     <div className="col-md-6">
                       <label className="form-label small fw-bold">City / District</label>
-                      <input type="text" className="form-control" value={editForm.city_district} onChange={(e) => setEditForm({ ...editForm, city_district: e.target.value })} />
+                      <input type="text" className="form-control" value={editForm.city_district} onChange={(e) => setEditForm({ ...editForm, city_district: e.target.value.toUpperCase() })} />
                     </div>
                   </div>
                   <div className="d-flex justify-content-end gap-2">
