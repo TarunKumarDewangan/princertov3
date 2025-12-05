@@ -17,8 +17,11 @@ return [
     // Explicitly list allowed origins (your production + local dev)
     'allowed_origins' => [
         'http://localhost:5173',
-        'http://127.0.0.1:5173',
         'http://localhost:3000',
+        'https://rtodatahub.in',
+        'https://www.rtodatahub.in',
+
+        // --- ADD YOUR NEW DOMAIN HERE ---
         'https://princerto.in',
         'https://www.princerto.in',
     ],
