@@ -13,7 +13,10 @@ return new class extends Migration {
             $table->string('email')->unique();
             $table->timestamp('email_verified_at')->nullable();
             $table->string('password');
-            $table->string('role')->default('user'); // 'admin' or 'user'
+
+            // ROLES: 'super_admin', 'level_1', 'level_0'
+            $table->string('role')->default('level_0');
+
             $table->boolean('is_active')->default(true);
 
             // WhatsApp Config
@@ -23,9 +26,6 @@ return new class extends Migration {
             $table->rememberToken();
             $table->timestamps();
         });
-
-        // Default Admin (Optional)
-        // \App\Models\User::create(['name'=>'Admin','email'=>'admin@rto.com','password'=>bcrypt('password'),'role'=>'admin']);
     }
 
     public function down(): void

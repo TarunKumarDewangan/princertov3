@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api';
 import toast from 'react-hot-toast';
@@ -8,6 +8,23 @@ export default function Login() {
     const [password, setPassword] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const navigate = useNavigate();
+
+    // --- NEW: AUTO-LOGIN CHECK ---
+    useEffect(() => {
+        const token = localStorage.getItem('token');
+        const userStr = localStorage.getItem('user');
+
+        if (token && userStr) {
+            const user = JSON.parse(userStr);
+            // Redirect based on role immediately
+            if (user.role === 'super_admin') {
+                navigate('/super-admin');
+            } else {
+                navigate('/dashboard');
+            }
+        }
+    }, [navigate]);
+    // -----------------------------
 
     const handleLogin = async (e) => {
         e.preventDefault();
@@ -19,10 +36,10 @@ export default function Login() {
             localStorage.setItem('token', res.data.access_token);
             localStorage.setItem('user', JSON.stringify(res.data.user));
 
-            toast.success("Welcome back!");
+            toast.success(`Welcome back, ${res.data.user.name}!`);
 
-            if (res.data.user.role === 'admin') {
-                navigate('/admin');
+            if (res.data.user.role === 'super_admin') {
+                navigate('/super-admin');
             } else {
                 navigate('/dashboard');
             }
@@ -40,7 +57,7 @@ export default function Login() {
             <div className="card shadow-sm border-0" style={{ width: '100%', maxWidth: '400px' }}>
                 <div className="card-body p-4">
                     <div className="text-center mb-4">
-                        <h3 className="fw-bold text-primary">RTO Management</h3>
+                        <h3 className="fw-bold text-primary">Prince RTO</h3>
                         <p className="text-muted">Sign in to your account</p>
                     </div>
                     <form onSubmit={handleLogin}>

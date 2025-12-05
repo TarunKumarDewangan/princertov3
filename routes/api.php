@@ -17,6 +17,7 @@ use App\Http\Controllers\Api\PermitController;
 use App\Http\Controllers\Api\SpeedGovernorController;
 use App\Http\Controllers\Api\BackupController;
 use App\Http\Controllers\Api\GlobalSearchController;
+use App\Http\Controllers\Api\LedgerController;
 
 // Import Service
 use App\Services\WhatsAppService;
@@ -94,6 +95,15 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/vehicles/{id}', [VehicleController::class, 'update']);
     Route::delete('/vehicles/{id}', [VehicleController::class, 'destroy']);
     Route::post('/reports/send-notification', [App\Http\Controllers\Api\ExpiryReportController::class, 'sendNotification']);
+
+    Route::get('/ledger/search', [App\Http\Controllers\Api\LedgerController::class, 'search']);
+
+    Route::get('/ledger/search', [App\Http\Controllers\Api\LedgerController::class, 'search']);
+    Route::post('/ledger/send-reminder', [App\Http\Controllers\Api\LedgerController::class, 'sendBalanceReminder']);
+
+    Route::get('/ledger', [App\Http\Controllers\Api\LedgerController::class, 'index']);
+    Route::post('/ledger/account', [App\Http\Controllers\Api\LedgerController::class, 'storeAccount']);
+    Route::post('/ledger/entry', [App\Http\Controllers\Api\LedgerController::class, 'storeEntry']);
 
     // --- TEST WHATSAPP ROUTE (UPDATED) ---
     Route::post('/admin/test-whatsapp', function (Request $request) {
