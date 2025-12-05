@@ -12,8 +12,8 @@ export default defineConfig({
                 enabled: true
             },
             manifest: {
-                name: 'RTO Data Hub',
-                short_name: 'RTO Hub',
+                name: 'Prince RTO',
+                short_name: 'Prince RTO',
                 description: 'RTO Management System',
                 theme_color: '#0d6efd',
                 background_color: '#ffffff',
