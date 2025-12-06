@@ -5,7 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use App\Services\WhatsAppService; // Import Service
+use App\Services\WhatsAppService;
 
 class WorkJobController extends Controller
 {
@@ -15,40 +15,39 @@ class WorkJobController extends Controller
         $userId = $request->user()->id;
         $today = now()->format('Y-m-d');
 
-        // Fetch Clients
+        // Fetch Clients for Dropdown
         $clients = DB::table('clients')->where('user_id', $userId)->orderBy('name')->get();
 
-        // Build Query for TABLE List
+        // Build Query
         $query = DB::table('work_jobs')
             ->join('clients', 'work_jobs.client_id', '=', 'clients.id')
             ->where('work_jobs.user_id', $userId)
             ->select('work_jobs.*', 'clients.name as client_name', 'clients.mobile');
 
         // Filters
-        if ($request->client_id) $query->where('work_jobs.client_id', $request->client_id);
-        if ($request->from_date) $query->whereDate('work_jobs.job_date', '>=', $request->from_date);
-        if ($request->to_date) $query->whereDate('work_jobs.job_date', '<=', $request->to_date);
+        if ($request->client_id)
+            $query->where('work_jobs.client_id', $request->client_id);
+        if ($request->from_date)
+            $query->whereDate('work_jobs.job_date', '>=', $request->from_date);
+        if ($request->to_date)
+            $query->whereDate('work_jobs.job_date', '<=', $request->to_date);
         if ($request->keyword) {
             $k = $request->keyword;
-            $query->where(function($q) use ($k) {
+            $query->where(function ($q) use ($k) {
                 $q->where('work_jobs.vehicle_no', 'like', "%$k%")
-                  ->orWhere('work_jobs.description', 'like', "%$k%");
+                    ->orWhere('work_jobs.description', 'like', "%$k%");
             });
         }
 
         $jobs = $query->orderBy('work_jobs.job_date', 'desc')->get();
 
-        // --- STATS CALCULATION ---
-
-        // 1. All Time
+        // Stats
         $allBill = DB::table('work_jobs')->where('user_id', $userId)->sum('bill_amount');
         $allPaid = DB::table('work_jobs')->where('user_id', $userId)->sum('paid_amount');
 
-        // 2. Daily (Today)
         $todayBill = DB::table('work_jobs')->where('user_id', $userId)->whereDate('job_date', $today)->sum('bill_amount');
         $todayPaid = DB::table('work_jobs')->where('user_id', $userId)->whereDate('job_date', $today)->sum('paid_amount');
 
-        // 3. Filtered (Current Search)
         $filterBill = $jobs->sum('bill_amount');
         $filterPaid = $jobs->sum('paid_amount');
 
@@ -63,35 +62,138 @@ class WorkJobController extends Controller
         ]);
     }
 
-    // ... (store and destroy methods remain same) ...
+    // 2. Create Job
     public function store(Request $request)
     {
-        $request->validate([ 'client_id' => 'required', 'description' => 'required', 'bill_amount' => 'required|numeric', 'job_date' => 'required|date' ]);
+        $request->validate([
+            'client_id' => 'required',
+            'description' => 'required',
+            'bill_amount' => 'required|numeric',
+            'job_date' => 'required|date'
+        ]);
+
         DB::table('work_jobs')->insert([
-            'user_id' => $request->user()->id, 'client_id' => $request->client_id,
+            'user_id' => $request->user()->id,
+            'client_id' => $request->client_id,
             'vehicle_no' => $request->vehicle_no ? strtoupper($request->vehicle_no) : null,
             'description' => strtoupper($request->description),
-            'bill_amount' => $request->bill_amount, 'paid_amount' => $request->paid_amount ?? 0,
-            'job_date' => $request->job_date, 'created_at' => now(), 'updated_at' => now()
+            'bill_amount' => $request->bill_amount,
+            'paid_amount' => $request->paid_amount ?? 0,
+            'job_date' => $request->job_date,
+            'created_at' => now(),
+            'updated_at' => now()
         ]);
+
         return response()->json(['message' => 'Work Recorded Successfully']);
     }
 
+    // 3. Delete Job
     public function destroy(Request $request, $id)
     {
         DB::table('work_jobs')->where('id', $id)->where('user_id', $request->user()->id)->delete();
         return response()->json(['message' => 'Job Deleted']);
     }
 
-    // --- NEW: SEND CLIENT REMINDER ---
+    // 4. GET PENDING DUES (Fixes 500 Error on Modal Open)
+    public function getPendingDues(Request $request, $clientId)
+    {
+        $jobs = DB::table('work_jobs')
+            ->where('client_id', $clientId)
+            ->where('user_id', $request->user()->id)
+            ->whereRaw('bill_amount > paid_amount') // Only jobs with dues
+            ->orderBy('job_date', 'asc')
+            ->get();
+
+        $totalDue = $jobs->sum(function ($job) {
+            return $job->bill_amount - $job->paid_amount;
+        });
+
+        return response()->json([
+            'jobs' => $jobs,
+            'total_due' => $totalDue
+        ]);
+    }
+
+    // 5. PROCESS PAYMENT (Fixes 500 Error on Submit)
+    public function processPayment(Request $request)
+    {
+        $request->validate([
+            'client_id' => 'required',
+            'amount' => 'required|numeric|min:1'
+        ]);
+
+        $userId = $request->user()->id;
+        $paymentAmount = $request->amount;
+
+        DB::beginTransaction();
+        try {
+            // 1. Fetch unpaid jobs (Oldest First)
+            $jobs = DB::table('work_jobs')
+                ->where('client_id', $request->client_id)
+                ->where('user_id', $userId)
+                ->whereRaw('bill_amount > paid_amount') // Only jobs with dues
+                ->orderBy('job_date', 'asc')
+                ->get();
+
+            // 2. Distribute money to existing pending jobs
+            foreach ($jobs as $job) {
+                if ($paymentAmount <= 0)
+                    break;
+
+                $pendingOnJob = $job->bill_amount - $job->paid_amount;
+
+                // Determine how much to pay for this specific job
+                $amountToPay = ($paymentAmount >= $pendingOnJob) ? $pendingOnJob : $paymentAmount;
+
+                // Update the job
+                DB::table('work_jobs')
+                    ->where('id', $job->id)
+                    ->update([
+                        'paid_amount' => $job->paid_amount + $amountToPay,
+                        'updated_at' => now()
+                    ]);
+
+                // Deduct from wallet
+                $paymentAmount -= $amountToPay;
+            }
+
+            // 3. HANDLE ADVANCE / EXCESS PAYMENT
+            // If there is still money left (or if there were no dues at all),
+            // save it as a Credit Entry (Advance).
+            if ($paymentAmount > 0) {
+                DB::table('work_jobs')->insert([
+                    'user_id' => $userId,
+                    'client_id' => $request->client_id,
+                    'vehicle_no' => '-',
+                    'description' => 'ADVANCE PAYMENT / CREDIT',
+                    'bill_amount' => 0, // No bill
+                    'paid_amount' => $paymentAmount, // Only payment
+                    'job_date' => now(),
+                    'created_at' => now(),
+                    'updated_at' => now()
+                ]);
+            }
+
+            DB::commit();
+            return response()->json(['message' => 'Payment Received Successfully!']);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json(['message' => 'Error: ' . $e->getMessage()], 500);
+        }
+    }
+
+    // 6. Send WhatsApp Reminder
     public function sendClientReminder(Request $request, WhatsAppService $whatsapp)
     {
         $request->validate(['client_id' => 'required']);
         $user = $request->user();
 
         $client = DB::table('clients')->where('id', $request->client_id)->where('user_id', $user->id)->first();
-        if (!$client) return response()->json(['message' => 'Client not found'], 404);
-        if (!$client->mobile) return response()->json(['message' => 'No mobile linked.'], 400);
+        if (!$client)
+            return response()->json(['message' => 'Client not found'], 404);
+        if (!$client->mobile)
+            return response()->json(['message' => 'No mobile linked.'], 400);
 
         // Calculate Pending Dues
         $jobs = DB::table('work_jobs')
@@ -101,7 +203,8 @@ class WorkJobController extends Controller
 
         $totalDue = $jobs->sum('bill_amount') - $jobs->sum('paid_amount');
 
-        if ($totalDue <= 0) return response()->json(['message' => 'No pending dues.'], 400);
+        if ($totalDue <= 0)
+            return response()->json(['message' => 'No pending dues.'], 400);
 
         $mobile = '91' . $client->mobile;
         $message = "📢 *Prince RTO - Work Dues*\n\n"
@@ -110,7 +213,8 @@ class WorkJobController extends Controller
             . "Please clear your dues.\nRegards,\n{$user->name}";
 
         try {
-            if (!$user->whatsapp_key) return response()->json(['message' => 'Setup WhatsApp Keys first.'], 400);
+            if (!$user->whatsapp_key)
+                return response()->json(['message' => 'Setup WhatsApp Keys first.'], 400);
             $whatsapp->sendTextMessage($mobile, $message, $user->whatsapp_key, $user->whatsapp_host);
             return response()->json(['message' => 'Reminder Sent!']);
         } catch (\Exception $e) {

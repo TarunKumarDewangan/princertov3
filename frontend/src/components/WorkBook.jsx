@@ -5,7 +5,7 @@ import UserNavbar from './UserNavbar';
 
 export default function WorkBook() {
     const [loading, setLoading] = useState(true);
-    const [sendingMsgId, setSendingMsgId] = useState(false); // Track sending state
+    const [sendingMsgId, setSendingMsgId] = useState(false);
 
     // View Mode
     const [viewMode, setViewMode] = useState('daily');
@@ -114,17 +114,18 @@ export default function WorkBook() {
     return (
         <div className="bg-light min-vh-100">
             <div className="d-print-none"><UserNavbar /></div>
+
+            {/* PRINT HEADER */}
             <div className="d-none d-print-block text-center mb-4 pt-4"><h2 className="fw-bold">Prince RTO - Work Register</h2><p>Generated: {new Date().toLocaleDateString()}</p></div>
 
             <div className="container mt-4 pb-5">
 
-                {/* 1. STATS WITH TOGGLE */}
+                {/* 1. STATS */}
                 <div className="row g-3 mb-4 d-print-none">
                     <div className="col-md-4">
                         <div className="card border-0 shadow-sm p-3 bg-white h-100 border-start border-5 border-primary">
                             <div className="d-flex justify-content-between align-items-start mb-1">
                                 <small className="text-muted fw-bold">TOTAL WORK DONE</small>
-                                {/* Toggle Buttons */}
                                 {!isFiltered && (
                                     <div className="btn-group btn-group-sm" role="group">
                                         <button type="button" className={`btn ${viewMode === 'daily' ? 'btn-primary' : 'btn-outline-primary'}`} onClick={() => setViewMode('daily')}>Today</button>
@@ -137,25 +138,13 @@ export default function WorkBook() {
                         </div>
                     </div>
                     <div className="col-6 col-md-4"><div className="card border-0 shadow-sm p-3 bg-success-subtle h-100"><small className="text-success fw-bold">RECEIVED</small><h3 className="fw-bold text-success mb-0">₹{Number(currentStats.paid).toLocaleString()}</h3></div></div>
-
-                    {/* PENDING DUES CARD (With WhatsApp Button) */}
                     <div className="col-6 col-md-4">
                         <div className="card border-0 shadow-sm p-3 bg-warning-subtle h-100 position-relative">
                             <small className="text-dark fw-bold">PENDING DUES</small>
                             <h3 className="fw-bold text-dark mb-0">₹{Number(currentStats.due).toLocaleString()}</h3>
-
-                            {/* WHATSAPP BUTTON */}
                             {filters.client_id && (
-                                <button
-                                    onClick={handleSendReminder}
-                                    className="btn btn-sm btn-success position-absolute bottom-0 end-0 m-3 fw-bold"
-                                    disabled={sendingMsgId}
-                                >
-                                    {sendingMsgId ? (
-                                        <span><span className="spinner-border spinner-border-sm me-1"></span></span>
-                                    ) : (
-                                        <span><i className="bi bi-whatsapp me-1"></i> Send Due</span>
-                                    )}
+                                <button onClick={handleSendReminder} className="btn btn-sm btn-success position-absolute bottom-0 end-0 m-3 fw-bold" disabled={sendingMsgId}>
+                                    {sendingMsgId ? <span><span className="spinner-border spinner-border-sm me-1"></span></span> : <span><i className="bi bi-whatsapp me-1"></i> Send Due</span>}
                                 </button>
                             )}
                         </div>
@@ -163,18 +152,17 @@ export default function WorkBook() {
                 </div>
 
                 {/* 2. ACTION & FILTER */}
-                <div className="card border-0 shadow-sm mb-4">
-                    <div className="card-header bg-white py-3 d-flex flex-wrap gap-2 justify-content-between align-items-center d-print-none">
+                <div className="card border-0 shadow-sm mb-4 d-print-none">
+                    <div className="card-header bg-white py-3 d-flex flex-wrap gap-2 justify-content-between align-items-center">
                         <h5 className="mb-0 fw-bold"><i className="bi bi-briefcase-fill me-2"></i> Work Book</h5>
                         <div className="d-flex gap-2">
                             <button onClick={() => { setClientForm({id:null, name:"", mobile:""}); setIsEditingClient(false); setShowClientModal(true); }} className="btn btn-outline-dark btn-sm fw-bold"><i className="bi bi-person-gear"></i> Clients</button>
-                            <button onClick={() => setShowPayModal(true)} className="btn btn-success btn-sm fw-bold px-3"><i className="bi bi-cash-coin me-1"></i> Receive Payment</button>
-                            <button onClick={() => setShowModal(true)} className="btn btn-primary btn-sm fw-bold px-3"><i className="bi bi-plus-lg"></i> Add Work</button>
-                            <button onClick={() => window.print()} className="btn btn-secondary btn-sm"><i className="bi bi-printer"></i> Print</button>
+                            <button onClick={() => setShowPayModal(true)} className="btn btn-success btn-sm fw-bold px-3"><i className="bi bi-cash-coin me-1"></i> Pay</button>
+                            <button onClick={() => setShowModal(true)} className="btn btn-primary btn-sm fw-bold px-3"><i className="bi bi-plus-lg"></i> Work</button>
+                            <button onClick={() => window.print()} className="btn btn-secondary btn-sm"><i className="bi bi-printer"></i></button>
                         </div>
                     </div>
-
-                    <div className="card-body bg-light d-print-none">
+                    <div className="card-body bg-light">
                         <form onSubmit={handleSearch} className="row g-2 align-items-end">
                             <div className="col-md-3"><label className="small fw-bold text-muted">Client</label><select className="form-select form-select-sm" value={filters.client_id} onChange={e => setFilters({...filters, client_id: e.target.value})}><option value="">-- All Clients --</option>{data.clients.map(cli => <option key={cli.id} value={cli.id}>{cli.name}</option>)}</select></div>
                             <div className="col-md-2"><label className="small fw-bold text-muted">From</label><input type="date" className="form-control form-select-sm" value={filters.from_date} onChange={e => setFilters({...filters, from_date: e.target.value})} /></div>
@@ -185,21 +173,90 @@ export default function WorkBook() {
                     </div>
                 </div>
 
-                {/* 3. TABLE */}
+                {/* 3. RESPONSIVE DATA DISPLAY */}
                 <div className="card border-0 shadow-sm">
-                    <div className="table-responsive">
+                    <div className="card-header bg-white py-3 fw-bold border-bottom d-print-none">Recent Entries</div>
+
+                    {/* --- DESKTOP TABLE --- */}
+                    <div className="table-responsive d-none d-md-block">
                         <table className="table table-hover mb-0 align-middle table-bordered border-light text-nowrap" style={{fontSize: '0.9rem'}}>
                             <thead className="table-light"><tr><th>Date</th><th>Client Name</th><th>Vehicle No</th><th>Work Description</th><th className="text-end">Total Bill</th><th className="text-end text-success">Paid</th><th className="text-end text-danger">Due</th><th className="text-center d-print-none">Action</th></tr></thead>
                             <tbody>
-                                {loading ? (<tr><td colSpan="8" className="text-center py-5">Loading...</td></tr>) : data.jobs.length > 0 ? (data.jobs.map((job) => (<tr key={job.id}><td>{new Date(job.job_date).toLocaleDateString('en-GB')}</td><td className="fw-bold">{job.client_name}</td><td className="fw-bold text-primary">{job.vehicle_no || '-'}</td><td>{job.description}</td><td className="text-end fw-bold">₹{Number(job.bill_amount).toLocaleString()}</td><td className="text-end text-success">₹{Number(job.paid_amount).toLocaleString()}</td><td className="text-end text-danger fw-bold">₹{Number(job.bill_amount - job.paid_amount).toLocaleString()}</td><td className="text-center d-print-none"><button onClick={() => handleDelete(job.id)} className="btn btn-link p-0 text-danger" title="Delete"><i className="bi bi-trash"></i></button></td></tr>))) : (<tr><td colSpan="8" className="text-center py-5 text-muted">No work records found.</td></tr>)}
+                                {loading ? (<tr><td colSpan="8" className="text-center py-5">Loading...</td></tr>) :
+                                data.jobs.length > 0 ? (data.jobs.map((job) => (
+                                    <tr key={job.id}>
+                                        <td>{new Date(job.job_date).toLocaleDateString('en-GB')}</td>
+                                        <td className="fw-bold">{job.client_name}</td>
+                                        <td className="fw-bold text-primary">{job.vehicle_no || '-'}</td>
+                                        <td>{job.description}</td>
+                                        <td className="text-end fw-bold">₹{Number(job.bill_amount).toLocaleString()}</td>
+                                        <td className="text-end text-success">₹{Number(job.paid_amount).toLocaleString()}</td>
+                                        <td className="text-end text-danger fw-bold">₹{Number(job.bill_amount - job.paid_amount).toLocaleString()}</td>
+                                        <td className="text-center d-print-none">
+                                            <button onClick={() => handleDelete(job.id)} className="btn btn-link p-0 text-danger" title="Delete"><i className="bi bi-trash"></i></button>
+                                        </td>
+                                    </tr>
+                                ))) : (<tr><td colSpan="8" className="text-center py-5 text-muted">No work records found.</td></tr>)}
                             </tbody>
                             <tfoot className="table-light fw-bold"><tr><td colSpan="4" className="text-end">TOTALS:</td><td className="text-end">₹{Number(currentStats.bill).toLocaleString()}</td><td className="text-end text-success">₹{Number(currentStats.paid).toLocaleString()}</td><td className="text-end text-danger">₹{Number(currentStats.due).toLocaleString()}</td><td className="d-print-none"></td></tr></tfoot>
                         </table>
                     </div>
+
+                    {/* --- MOBILE CARD VIEW --- */}
+                    <div className="d-block d-md-none bg-light p-2">
+                        {loading ? (<div className="text-center py-5">Loading...</div>) :
+                        data.jobs.length > 0 ? (data.jobs.map((job) => {
+                            const due = job.bill_amount - job.paid_amount;
+                            return (
+                                <div className="card shadow-sm border-0 mb-3" key={job.id}>
+                                    <div className="card-body p-3">
+                                        {/* Header */}
+                                        <div className="d-flex justify-content-between align-items-center mb-2 border-bottom pb-2">
+                                            <div>
+                                                <div className="fw-bold text-dark">{job.client_name}</div>
+                                                <small className="text-muted"><i className="bi bi-calendar"></i> {new Date(job.job_date).toLocaleDateString('en-GB')}</small>
+                                            </div>
+                                            <div className="text-end">
+                                                {job.vehicle_no ? <span className="badge bg-primary-subtle text-primary">{job.vehicle_no}</span> : <span className="badge bg-light text-dark border">Advance/Credit</span>}
+                                            </div>
+                                        </div>
+
+                                        {/* Description */}
+                                        <div className="mb-2 text-secondary small fw-bold">
+                                            {job.description}
+                                        </div>
+
+                                        {/* Financials Grid */}
+                                        <div className="d-flex justify-content-between bg-light rounded p-2 mb-2 small text-center">
+                                            <div><div className="text-muted">Bill</div><strong>₹{Number(job.bill_amount).toLocaleString()}</strong></div>
+                                            <div><div className="text-success">Paid</div><strong className="text-success">₹{Number(job.paid_amount).toLocaleString()}</strong></div>
+                                            <div><div className="text-danger">Due</div><strong className="text-danger">₹{Number(due).toLocaleString()}</strong></div>
+                                        </div>
+
+                                        {/* Actions */}
+                                        <div className="text-end">
+                                            <button onClick={() => handleDelete(job.id)} className="btn btn-sm btn-outline-danger border-0"><i className="bi bi-trash"></i> Delete Entry</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })) : (<div className="text-center py-5 text-muted">No records found.</div>)}
+
+                        {/* Mobile Summary Footer */}
+                        <div className="card border-0 bg-white text-center p-3 mt-3 shadow-sm">
+                            <small className="text-muted fw-bold d-block mb-2">SUMMARY ({viewMode === 'daily' ? 'TODAY' : 'ALL TIME'})</small>
+                            <div className="d-flex justify-content-around">
+                                <div><small className="d-block text-primary">Work</small><strong>₹{Number(currentStats.bill).toLocaleString()}</strong></div>
+                                <div><small className="d-block text-success">Recv</small><strong>₹{Number(currentStats.paid).toLocaleString()}</strong></div>
+                                <div><small className="d-block text-danger">Due</small><strong>₹{Number(currentStats.due).toLocaleString()}</strong></div>
+                            </div>
+                        </div>
+                    </div>
+
                 </div>
             </div>
 
-            {/* MODALS */}
+            {/* MODALS REMAIN SAME (Paste PayModal, AddWorkModal, ClientModal here) */}
             {/* PAYMENT MODAL */}
             {showPayModal && (<div className="modal d-block" style={{backgroundColor:'rgba(0,0,0,0.5)'}}><div className="modal-dialog modal-dialog-centered"><div className="modal-content border-0 shadow-lg"><div className="modal-header bg-success text-white"><h5 className="modal-title fw-bold">Receive Payment</h5><button className="btn-close btn-close-white" onClick={() => setShowPayModal(false)}></button></div><div className="modal-body p-4"><div className="mb-3"><label className="form-label small fw-bold text-muted">Select Client</label><select className="form-select fw-bold" value={payClient} onChange={e => setPayClient(e.target.value)}><option value="">-- Select --</option>{data.clients.map(cli => <option key={cli.id} value={cli.id}>{cli.name}</option>)}</select></div>{payClient && (<div className="alert alert-warning d-flex justify-content-between align-items-center mb-3"><span className="small">Total Pending Dues:</span><strong className="fs-5 text-danger">₹{Number(totalDue).toLocaleString()}</strong></div>)}<div className="mb-4"><label className="form-label small fw-bold text-muted">Amount Received (₹)</label><input type="number" className="form-control fs-4 fw-bold text-success" placeholder="0" value={payAmount} onChange={e => setPayAmount(e.target.value)} disabled={!payClient} /></div><div className="d-grid"><button onClick={handlePaymentSubmit} className="btn btn-success fw-bold py-2" disabled={!payClient || !payAmount}>Confirm Payment</button></div></div></div></div></div>)}
             {/* ADD WORK MODAL */}
