@@ -105,6 +105,24 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/ledger/account', [App\Http\Controllers\Api\LedgerController::class, 'storeAccount']);
     Route::post('/ledger/entry', [App\Http\Controllers\Api\LedgerController::class, 'storeEntry']);
 
+    Route::delete('/ledger/entry/{id}', [App\Http\Controllers\Api\LedgerController::class, 'destroyEntry']);
+    Route::put('/ledger/account/{id}', [App\Http\Controllers\Api\LedgerController::class, 'updateAccount']);
+    Route::delete('/ledger/account/{id}', [App\Http\Controllers\Api\LedgerController::class, 'destroyAccount']);
+    // Work Book Routes
+    Route::get('/work-jobs', [App\Http\Controllers\Api\WorkJobController::class, 'index']);
+    Route::post('/work-jobs', [App\Http\Controllers\Api\WorkJobController::class, 'store']);
+    Route::delete('/work-jobs/{id}', [App\Http\Controllers\Api\WorkJobController::class, 'destroy']);
+    Route::get('/work-jobs/dues/{clientId}', [App\Http\Controllers\Api\WorkJobController::class, 'getPendingDues']);
+    Route::post('/work-jobs/pay', [App\Http\Controllers\Api\WorkJobController::class, 'processPayment']);
+    Route::post('/work-jobs/send-reminder', [App\Http\Controllers\Api\WorkJobController::class, 'sendClientReminder']);
+
+    Route::get('/clients', [App\Http\Controllers\Api\ClientController::class, 'index']);
+    Route::post('/clients', [App\Http\Controllers\Api\ClientController::class, 'store']);
+    Route::put('/clients/{id}', [App\Http\Controllers\Api\ClientController::class, 'update']);   // <--- NEW
+    Route::delete('/clients/{id}', [App\Http\Controllers\Api\ClientController::class, 'destroy']); // <--- NEW
+
+    Route::post('/bulk-import', [App\Http\Controllers\Api\BulkImportController::class, 'import']);
+
     // --- TEST WHATSAPP ROUTE (UPDATED) ---
     Route::post('/admin/test-whatsapp', function (Request $request) {
         try {

@@ -46,10 +46,16 @@ export default function UserNavbar() {
 
                         {/* --- NEW CASH FLOW MENU ITEM --- */}
                         <li className="nav-item"><Link className={`nav-link ${isActive('/cash-flow')}`} to="/cash-flow" onClick={()=>setIsOpen(false)}>Cash Flow</Link></li>
-
+                       <li className="nav-item"><Link className={`nav-link ${isActive('/work-book')}`} to="/work-book" onClick={()=>setIsOpen(false)}>Work Book</Link></li>
                         {isLevel1 && (
                             <li className="nav-item"><Link className={`nav-link ${isActive('/backup')}`} to="/backup" onClick={()=>setIsOpen(false)}>Backup</Link></li>
+
                         )}
+                        {isLevel1 && (
+    <li className="nav-item">
+        <Link className={`nav-link ${isActive('/bulk-import')}`} to="/bulk-import">Bulk Import</Link>
+    </li>
+)}
                     </ul>
 
                     {/* ... (Search bar & User Profile section remains same) ... */}

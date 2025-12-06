@@ -11,6 +11,8 @@ import AccountStatement from './components/AccountStatement';
 import ExpiryReports from './components/ExpiryReports';
 import BackupPage from './components/BackupPage';
 import CashFlow from './components/CashFlow';
+import BulkImport from './components/BulkImport';
+import WorkBook from './components/WorkBook';
 
 function App() {
   return (
@@ -32,6 +34,8 @@ function App() {
         <Route path="/reports/expiry" element={<ExpiryReports />} />
         <Route path="/backup" element={<BackupPage />} />
         <Route path="/cash-flow" element={<CashFlow />} />
+        <Route path="/bulk-import" element={<BulkImport />} />
+        <Route path="/work-book" element={<WorkBook />} />
       </Routes>
     </BrowserRouter>
   );

@@ -9,9 +9,8 @@ class AccountController extends Controller
     public function statement(Request $request, $citizenId)
     {
         try {
-            // --- SECURITY FIX: Add ->where('user_id', ...) ---
             $citizen = Citizen::where('id', $citizenId)
-                ->where('user_id', $request->user()->id) // <--- THIS LINE SECURES IT
+                ->where('user_id', $request->user()->id)
                 ->with([
                     'vehicles.taxes.payments',
                     'vehicles.insurances.payments',
@@ -20,25 +19,30 @@ class AccountController extends Controller
                     'vehicles.vltds.payments',
                     'vehicles.permits.payments',
                     'vehicles.speedGovernors.payments',
-                ])->first(); // Changed findOrFail to first()
+                ])->first();
 
             if (!$citizen) {
                 return response()->json(['message' => 'Unauthorized or Not Found'], 403);
             }
 
-            // ... Rest of the code remains exactly the same ...
             $statement = [];
 
             foreach ($citizen->vehicles as $v) {
-                // (Keep the rest of your logic here...)
+
                 // Helper to format data rows
                 $addItem = function ($items, $serviceName, $dateField, $billField) use ($v, &$statement) {
                     if (!$items)
                         return;
+
                     foreach ($items as $item) {
                         $paid = $item->payments->sum('amount');
+
                         $statement[] = [
                             'id' => $item->id,
+
+                            // --- NEW UNIQUE KEY (Prevents Checkbox Conflict) ---
+                            'unique_key' => $serviceName . '_' . $item->id,
+
                             'date' => $item->$dateField ?? $item->created_at,
                             'vehicle' => $v->registration_no,
                             'service' => $serviceName,

@@ -13,6 +13,7 @@ class LedgerController extends Controller
     public function index(Request $request)
     {
         $userId = $request->user()->id;
+        $today = now()->format('Y-m-d');
 
         // Get Accounts
         $accounts = DB::table('ledger_accounts')
@@ -24,26 +25,37 @@ class LedgerController extends Controller
         $entries = DB::table('ledger_entries')
             ->join('ledger_accounts', 'ledger_entries.ledger_account_id', '=', 'ledger_accounts.id')
             ->where('ledger_entries.user_id', $userId)
-            ->select(
-                'ledger_entries.*',
-                'ledger_accounts.name as account_name',
-                'ledger_accounts.mobile as account_mobile'
-            )
+            ->select('ledger_entries.*', 'ledger_accounts.name as account_name', 'ledger_accounts.mobile as account_mobile')
             ->orderBy('entry_date', 'desc')
             ->orderBy('id', 'desc')
             ->limit(50)
             ->get();
 
-        // Calculate Totals
-        $totalIn = DB::table('ledger_entries')->where('user_id', $userId)->where('txn_type', 'IN')->sum('amount');
-        $totalOut = DB::table('ledger_entries')->where('user_id', $userId)->where('txn_type', 'OUT')->sum('amount');
+        // --- CALCULATION LOGIC ---
+
+        // 1. All Time
+        $allIn = DB::table('ledger_entries')->where('user_id', $userId)->where('txn_type', 'IN')->sum('amount');
+        $allOut = DB::table('ledger_entries')->where('user_id', $userId)->where('txn_type', 'OUT')->sum('amount');
+
+        // 2. Today (Daily)
+        $todayIn = DB::table('ledger_entries')->where('user_id', $userId)->where('txn_type', 'IN')->whereDate('entry_date', $today)->sum('amount');
+        $todayOut = DB::table('ledger_entries')->where('user_id', $userId)->where('txn_type', 'OUT')->whereDate('entry_date', $today)->sum('amount');
 
         return response()->json([
             'accounts' => $accounts,
             'entries' => $entries,
-            'balance' => $totalIn - $totalOut,
-            'total_in' => $totalIn,
-            'total_out' => $totalOut
+            'stats' => [
+                'all' => [
+                    'in' => $allIn,
+                    'out' => $allOut,
+                    'balance' => $allIn - $allOut
+                ],
+                'daily' => [
+                    'in' => $todayIn,
+                    'out' => $todayOut,
+                    'balance' => $todayIn - $todayOut
+                ]
+            ]
         ]);
     }
 
@@ -186,5 +198,48 @@ class LedgerController extends Controller
         } catch (\Exception $e) {
             return response()->json(['message' => 'Failed to send WhatsApp.'], 500);
         }
+    }
+
+    public function destroyEntry(Request $request, $id)
+    {
+        $deleted = DB::table('ledger_entries')
+            ->where('id', $id)
+            ->where('user_id', $request->user()->id) // Security check
+            ->delete();
+
+        if ($deleted)
+            return response()->json(['message' => 'Transaction Deleted']);
+        return response()->json(['message' => 'Not found or unauthorized'], 403);
+    }
+
+    // 7. Update Account Head
+    public function updateAccount(Request $request, $id)
+    {
+        $request->validate(['name' => 'required']);
+
+        $updated = DB::table('ledger_accounts')
+            ->where('id', $id)
+            ->where('user_id', $request->user()->id)
+            ->update([
+                'name' => $request->name,
+                'mobile' => $request->mobile ?? null,
+                'updated_at' => now()
+            ]);
+
+        return response()->json(['message' => 'Account Updated']);
+    }
+
+    // 8. Delete Account Head
+    public function destroyAccount(Request $request, $id)
+    {
+        // Because migration has onDelete('cascade'), deleting account deletes all its entries automatically.
+        $deleted = DB::table('ledger_accounts')
+            ->where('id', $id)
+            ->where('user_id', $request->user()->id)
+            ->delete();
+
+        if ($deleted)
+            return response()->json(['message' => 'Account and its history deleted']);
+        return response()->json(['message' => 'Not found'], 403);
     }
 }
