@@ -25,9 +25,16 @@ export default function ClientLedger() {
     const [showWorkModal, setShowWorkModal] = useState(false);
     const [showPayModal, setShowPayModal] = useState(false);
 
-    // REMOVED job_date from initial state, will add it on submit
-    const [workForm, setWorkForm] = useState({ vehicle_no: "", description: "", bill_amount: "", paid_amount: "" });
-    const [payForm, setPayForm] = useState({ amount: "" });
+    // Forms
+    const [workForm, setWorkForm] = useState({ job_date: "", vehicle_no: "", description: "", bill_amount: "", paid_amount: "" });
+    const [payForm, setPayForm] = useState({ job_date: "", amount: "" });
+
+    // --- HELPER: GET LOCAL TIME ---
+    const getCurrentLocalTime = () => {
+        const now = new Date();
+        now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+        return now.toISOString().slice(0, 16);
+    };
 
     useEffect(() => { fetchData(); }, [id]);
 
@@ -48,11 +55,9 @@ export default function ClientLedger() {
     // --- PROCESS LIST ---
     let runningBalance = 0;
     const fullList = [];
-
     data.history.forEach((item) => {
         const bill = Number(item.bill_amount) || 0;
         const paid = Number(item.paid_amount) || 0;
-
         if (bill > 0) {
             runningBalance += bill;
             fullList.push({ ...item, type: 'bill', snapshot_balance: runningBalance, displayDate: item.job_date });
@@ -72,10 +77,7 @@ export default function ClientLedger() {
         if (filter === 'custom' && customDates.from && customDates.to) {
             const from = new Date(customDates.from).setHours(0,0,0,0);
             const to = new Date(customDates.to).setHours(23,59,59,999);
-            return fullList.filter(item => {
-                const date = new Date(item.displayDate).getTime();
-                return date >= from && date <= to;
-            });
+            return fullList.filter(item => { const d = new Date(item.displayDate).getTime(); return d >= from && d <= to; });
         }
         return fullList;
     };
@@ -83,113 +85,74 @@ export default function ClientLedger() {
 
     // --- HANDLERS ---
 
+    // UPDATED: Show specific error message
     const handleSendReminder = async () => {
         if(!confirm("Send WhatsApp Balance Reminder?")) return;
         setSendingMsg(true);
-        try { await api.post('/api/work-jobs/send-reminder', { client_id: id }); toast.success("Sent!"); }
-        catch (error) { toast.error("Failed"); } finally { setSendingMsg(false); }
+        try {
+            await api.post('/api/work-jobs/send-reminder', { client_id: id });
+            toast.success("Reminder Sent Successfully!");
+        }
+        catch (error) {
+            // Show the actual error from backend (e.g. "No mobile linked")
+            const msg = error.response?.data?.message || "Failed to send";
+            toast.error(msg);
+        } finally {
+            setSendingMsg(false);
+        }
     };
 
-    // Open Add Modals (Reset Forms)
-    const openAddWork = () => {
-        setEditingItem(null);
-        setWorkForm({ vehicle_no: "", description: "", bill_amount: "", paid_amount: "" });
-        setShowWorkModal(true);
-    };
-    const openAddPay = () => {
-        setEditingItem(null);
-        setPayForm({ amount: "" });
-        setShowPayModal(true);
-    };
+    const openAddWork = () => { setEditingItem(null); setWorkForm({ job_date: getCurrentLocalTime(), vehicle_no: "", description: "", bill_amount: "", paid_amount: "" }); setShowWorkModal(true); };
+    const openAddPay = () => { setEditingItem(null); setPayForm({ job_date: getCurrentLocalTime(), amount: "" }); setShowPayModal(true); };
 
-    // Open Edit Modals (Fill Data)
     const openEdit = (item, type) => {
-        setEditingItem(item); // Keep original item (has ID and Date)
+        setEditingItem(item);
+        const d = new Date(item.job_date);
+        d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+        const dateStr = d.toISOString().slice(0, 16);
+
         if (type === 'bill') {
-            setWorkForm({
-                vehicle_no: item.vehicle_no || "",
-                description: item.description || "",
-                bill_amount: item.bill_amount,
-                paid_amount: item.paid_amount
-            });
+            setWorkForm({ job_date: dateStr, vehicle_no: item.vehicle_no || "", description: item.description || "", bill_amount: item.bill_amount, paid_amount: item.paid_amount });
             setShowWorkModal(true);
         } else {
-            setPayForm({ amount: item.paid_amount });
+            setPayForm({ job_date: dateStr, amount: item.paid_amount });
             setShowPayModal(true);
         }
     };
 
-    const handleDelete = async (itemId) => {
-        if(!confirm("Delete permanently?")) return;
-        try { await api.delete(`/api/work-jobs/${itemId}`); toast.success("Deleted"); fetchData(); }
-        catch (error) { toast.error("Failed"); }
-    };
+    const handleDelete = async (itemId) => { if(!confirm("Delete permanently?")) return; try { await api.delete(`/api/work-jobs/${itemId}`); toast.success("Deleted"); fetchData(); } catch(e){ toast.error("Failed"); } };
 
-    // --- SUBMIT WORK (AUTO TIME) ---
     const handleWorkSubmit = async (e) => {
         e.preventDefault();
-
-        // Use Current System Time if adding new, else keep old date if editing
-        const submitDate = editingItem ? editingItem.job_date : new Date().toISOString().slice(0, 16);
-
-        const payload = { ...workForm, client_id: id, job_date: submitDate };
-
-        try {
-            if (editingItem) await api.put(`/api/work-jobs/${editingItem.id}`, payload);
-            else await api.post('/api/work-jobs', payload);
-
-            toast.success("Saved!");
-            setShowWorkModal(false);
-            fetchData();
-        } catch (error) { toast.error("Failed"); }
+        const finalDate = editingItem ? workForm.job_date : getCurrentLocalTime();
+        const payload = { ...workForm, client_id: id, job_date: finalDate };
+        try { if (editingItem) await api.put(`/api/work-jobs/${editingItem.id}`, payload); else await api.post('/api/work-jobs', payload); toast.success("Saved!"); setShowWorkModal(false); fetchData(); } catch(e){ toast.error("Failed"); }
     };
 
-    // --- SUBMIT PAYMENT (AUTO TIME) ---
     const handlePaySubmit = async (e) => {
         e.preventDefault();
-
-        // Use Current System Time if adding new, else keep old date
-        const submitDate = editingItem ? editingItem.job_date : new Date().toISOString().slice(0, 16);
-
+        const finalDate = editingItem ? payForm.job_date : getCurrentLocalTime();
         try {
-            if (editingItem) {
-                await api.put(`/api/work-jobs/${editingItem.id}`, {
-                    job_date: submitDate,
-                    bill_amount: 0,
-                    paid_amount: payForm.amount,
-                    description: "PAYMENT RECEIVED",
-                    client_id: id
-                });
-            } else {
-                await api.post('/api/work-jobs/pay', {
-                    client_id: id,
-                    amount: payForm.amount
-                    // Backend handles 'now()' for new payments via pay endpoint usually,
-                    // but if using standard store, we pass date.
-                    // Since 'pay' endpoint is custom, it uses NOW() automatically in backend.
-                });
-            }
-            toast.success("Saved!");
-            setShowPayModal(false);
-            fetchData();
-        } catch (error) { toast.error("Failed"); }
+            if (editingItem) await api.put(`/api/work-jobs/${editingItem.id}`, { job_date: finalDate, bill_amount: 0, paid_amount: payForm.amount, description: "PAYMENT RECEIVED", client_id: id });
+            else await api.post('/api/work-jobs/pay', { client_id: id, amount: payForm.amount });
+            toast.success("Saved!"); setShowPayModal(false); fetchData();
+        } catch(e){ toast.error("Failed"); }
     };
 
-    const formatTime = (iso) => new Date(iso).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+    const formatTime = (iso) => new Date(iso).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', hour12: true});
     const formatDate = (iso) => new Date(iso).toDateString();
 
     return (
         <div className="bg-light min-vh-100 d-flex flex-column">
             <UserNavbar />
 
-            {/* HEADER */}
             <div className="bg-white shadow-sm border-bottom sticky-top" style={{top: '56px', zIndex: 100}}>
                 <div className="container py-2 d-flex justify-content-between align-items-center" style={{maxWidth: '600px'}}>
                     <div className="d-flex align-items-center gap-2">
                         <Link to="/work-book" className="btn btn-light btn-sm rounded-circle"><i className="bi bi-arrow-left"></i></Link>
                         <div>
                             <h6 className="fw-bold mb-0 text-dark">{data.client.name}</h6>
-                            <small className="text-muted" style={{fontSize: '11px'}}>{data.client.mobile}</small>
+                            <small className="text-muted" style={{fontSize: '11px'}}>{data.client.mobile || 'No Mobile'}</small>
                         </div>
                     </div>
                     <div className="d-flex align-items-center gap-2">
@@ -219,17 +182,16 @@ export default function ClientLedger() {
                 </div>
             </div>
 
-            {/* LEDGER AREA */}
             <div className="flex-grow-1 bg-light pb-5">
                 <div className="container pt-3" style={{maxWidth: '600px', paddingBottom: '120px'}}>
                     {displayList.length === 0 && <div className="text-center text-muted mt-5"><small>No transactions found.</small></div>}
+
                     {displayList.map((item, index) => {
                         const isNewDate = index === 0 || formatDate(item.displayDate) !== formatDate(displayList[index-1].displayDate);
                         return (
                             <React.Fragment key={`${item.id}-${item.type}-${index}`}>
                                 {isNewDate && <div className="text-center my-4"><span className="badge bg-white text-secondary border shadow-sm px-3 py-1 rounded-pill fw-normal" style={{fontSize: '0.8rem'}}>{new Date(item.displayDate).toLocaleDateString('en-GB', {day:'numeric', month:'short', year:'numeric'})}</span></div>}
 
-                                {/* PAYMENT (GREEN) */}
                                 {item.type === 'payment' && (
                                     <div className="d-flex flex-column align-items-start mb-3 animate__animated animate__fadeInLeft">
                                         <div className="bg-white p-3 shadow-sm position-relative" style={{minWidth: '220px', maxWidth: '85%', borderLeft: '5px solid #198754', borderRadius: '0 12px 12px 12px', backgroundColor: '#f0fff4'}}>
@@ -239,15 +201,14 @@ export default function ClientLedger() {
                                             </div>
                                             <div className="small text-secondary fw-bold">PAYMENT RECEIVED</div>
                                             <div className="mt-2 border-top pt-2 d-flex gap-3">
-                                                <button onClick={() => openEdit(item, 'payment')} className="btn btn-link p-0 text-primary" style={{fontSize:'12px'}}>Edit</button>
-                                                <button onClick={() => handleDelete(item.id)} className="btn btn-link p-0 text-danger" style={{fontSize:'12px'}}>Delete</button>
+                                                <button onClick={() => openEdit(item, 'payment')} className="btn btn-link p-0 text-primary" style={{fontSize:'11px'}}>Edit</button>
+                                                <button onClick={() => handleDelete(item.id)} className="btn btn-link p-0 text-danger" style={{fontSize:'11px'}}>Delete</button>
                                             </div>
                                         </div>
                                         <small className="text-muted ms-2 mt-1 fw-bold" style={{fontSize: '11px'}}>{item.snapshot_balance <= 0 ? "Clear" : `₹${Number(item.snapshot_balance).toLocaleString()} Due`}</small>
                                     </div>
                                 )}
 
-                                {/* WORK (RED) */}
                                 {item.type === 'bill' && (
                                     <div className="d-flex flex-column align-items-end mb-3 animate__animated animate__fadeInRight">
                                         <div className="bg-white p-3 shadow-sm position-relative" style={{minWidth: '240px', maxWidth: '85%', borderRight: '5px solid #dc3545', borderRadius: '12px 0 12px 12px', backgroundColor: '#fff5f5'}}>
@@ -261,7 +222,7 @@ export default function ClientLedger() {
                                             </div>
                                             {Number(item.paid_amount) > 0 && <div className="text-end border-top pt-1 mt-1"><small className="text-success fw-bold" style={{fontSize:'11px'}}>+ ₹{Number(item.paid_amount).toLocaleString()} Advance</small></div>}
                                             <div className="mt-2 border-top pt-2 d-flex gap-3 justify-content-end">
-                                                <button onClick={() => openEdit(item, 'bill')} className="btn btn-link p-0 text-primary" style={{fontSize:'12px'}}>Edit</button>
+                                                <button onClick={() => openEdit(item, 'bill')} className="btn btn-link p-0 text-primary" style={{fontSize:'11px'}}>Edit</button>
                                                 <button onClick={() => handleDelete(item.id)} className="btn btn-link p-0 text-danger" style={{fontSize:'12px'}}>Delete</button>
                                             </div>
                                         </div>
@@ -275,9 +236,12 @@ export default function ClientLedger() {
                 </div>
             </div>
 
-            {/* FIXED BOTTOM BUTTONS */}
             <div className="fixed-bottom bg-white shadow-lg border-top p-2" style={{zIndex: 101}}>
                 <div className="container" style={{maxWidth: '600px'}}>
+                    <div className="d-flex justify-content-between text-center mb-2 px-2 small text-secondary">
+                        <span>Work: <strong>₹{Number(data.summary.total_bill).toLocaleString()}</strong></span>
+                        <span>Recv: <strong>₹{Number(data.summary.total_paid).toLocaleString()}</strong></span>
+                    </div>
                     <div className="d-flex gap-2">
                         <button onClick={openAddPay} className="btn btn-success fw-bold flex-grow-1 py-3 rounded-3"><i className="bi bi-arrow-down-left me-1"></i> RECEIVED (In)</button>
                         <button onClick={openAddWork} className="btn btn-danger fw-bold flex-grow-1 py-3 rounded-3"><i className="bi bi-arrow-up-right me-1"></i> WORK (Bill)</button>
@@ -285,53 +249,8 @@ export default function ClientLedger() {
                 </div>
             </div>
 
-            {/* WORK MODAL (No Date Input) */}
-            {showWorkModal && (
-                <div className="modal d-block" style={{backgroundColor:'rgba(0,0,0,0.6)'}}>
-                    <div className="modal-dialog modal-dialog-centered modal-sm">
-                        <div className="modal-content border-0 shadow-lg">
-                            <div className="modal-header bg-danger text-white py-2">
-                                <h6 className="modal-title fw-bold">{editingItem?'Edit Work':'Add Work Bill'}</h6>
-                                <button className="btn-close btn-close-white" onClick={()=>setShowWorkModal(false)}></button>
-                            </div>
-                            <form onSubmit={handleWorkSubmit}>
-                                <div className="modal-body p-3">
-                                    {/* DATE HIDDEN FOR NEW ENTRIES */}
-                                    {editingItem && <div className="mb-2"><label className="small fw-bold">Date</label><input type="datetime-local" className="form-control" value={workForm.job_date} onChange={e=>setWorkForm({...workForm, job_date:e.target.value})} /></div>}
-
-                                    <input type="text" className="form-control mb-2" placeholder="Vehicle No (Opt)" value={workForm.vehicle_no} onChange={e=>setWorkForm({...workForm, vehicle_no:e.target.value.toUpperCase()})} />
-                                    <textarea className="form-control mb-2 fw-bold" placeholder="Work Description..." rows="2" value={workForm.description} onChange={e=>setWorkForm({...workForm, description:e.target.value.toUpperCase()})} required></textarea>
-                                    <input type="number" className="form-control fw-bold text-danger fs-4 mb-3" placeholder="Bill Amount ₹" value={workForm.bill_amount} onChange={e=>setWorkForm({...workForm, bill_amount:e.target.value})} autoFocus required />
-                                    <input type="number" className="form-control fw-bold text-success" placeholder="Advance Received ₹" value={workForm.paid_amount} onChange={e=>setWorkForm({...workForm, paid_amount:e.target.value})} />
-                                </div>
-                                <div className="modal-footer p-2"><button type="submit" className="btn btn-danger w-100 fw-bold">{editingItem ? 'Update' : 'Save'}</button></div>
-                            </form>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* PAY MODAL (No Date Input) */}
-            {showPayModal && (
-                <div className="modal d-block" style={{backgroundColor:'rgba(0,0,0,0.6)'}}>
-                    <div className="modal-dialog modal-dialog-centered modal-sm">
-                        <div className="modal-content border-0 shadow-lg">
-                            <div className="modal-header bg-success text-white py-2">
-                                <h6 className="modal-title fw-bold">{editingItem?'Edit Payment':'Payment Received'}</h6>
-                                <button className="btn-close btn-close-white" onClick={()=>setShowPayModal(false)}></button>
-                            </div>
-                            <div className="modal-body p-4 text-center">
-                                {/* DATE HIDDEN FOR NEW ENTRIES */}
-                                {editingItem && <input type="datetime-local" className="form-control mb-3" value={payForm.job_date} onChange={e=>setPayForm({...payForm, job_date:e.target.value})} />}
-
-                                <p className="text-muted small mb-1">Amount</p>
-                                <input type="number" className="form-control form-control-lg text-center fw-bold text-success fs-1 mb-3" placeholder="₹ 0" value={payForm.amount} onChange={e=>setPayForm({...payForm, amount:e.target.value})} autoFocus />
-                                <button onClick={handlePaySubmit} className="btn btn-success w-100 fw-bold py-2" disabled={!payForm.amount}>{editingItem ? 'Update' : 'Confirm'}</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
+            {showWorkModal && (<div className="modal d-block" style={{backgroundColor:'rgba(0,0,0,0.6)'}}><div className="modal-dialog modal-dialog-centered modal-sm"><div className="modal-content border-0 shadow-lg"><div className="modal-header bg-danger text-white py-2"><h6 className="modal-title fw-bold">{editingItem?'Edit Work':'Add Work Bill'}</h6><button className="btn-close btn-close-white" onClick={()=>setShowWorkModal(false)}></button></div><form onSubmit={handleWorkSubmit}><div className="modal-body p-3">{editingItem && <div className="mb-2"><label className="small fw-bold">Date & Time</label><input type="datetime-local" className="form-control" value={workForm.job_date} onChange={e=>setWorkForm({...workForm, job_date:e.target.value})} required /></div>}<input type="text" className="form-control mb-2" placeholder="Vehicle No (Opt)" value={workForm.vehicle_no} onChange={e=>setWorkForm({...workForm, vehicle_no:e.target.value.toUpperCase()})} /><textarea className="form-control mb-2 fw-bold" placeholder="Work Description..." rows="2" value={workForm.description} onChange={e=>setWorkForm({...workForm, description:e.target.value.toUpperCase()})} required></textarea><input type="number" className="form-control fw-bold text-danger fs-4 mb-3" placeholder="Bill Amount ₹" value={workForm.bill_amount} onChange={e=>setWorkForm({...workForm, bill_amount:e.target.value})} autoFocus required /><input type="number" className="form-control fw-bold text-success" placeholder="Advance Received ₹" value={workForm.paid_amount} onChange={e=>setWorkForm({...workForm, paid_amount:e.target.value})} /></div><div className="modal-footer p-2"><button type="submit" className="btn btn-danger w-100 fw-bold">{editingItem ? 'Update' : 'Save'}</button></div></form></div></div></div>)}
+            {showPayModal && (<div className="modal d-block" style={{backgroundColor:'rgba(0,0,0,0.6)'}}><div className="modal-dialog modal-dialog-centered modal-sm"><div className="modal-content border-0 shadow-lg"><div className="modal-header bg-success text-white py-2"><h6 className="modal-title fw-bold">{editingItem?'Edit Payment':'Payment Received'}</h6><button className="btn-close btn-close-white" onClick={()=>setShowPayModal(false)}></button></div><div className="modal-body p-4 text-center">{editingItem && <div className="mb-3 text-start"><label className="small fw-bold text-muted">Date & Time</label><input type="datetime-local" className="form-control" value={payForm.job_date} onChange={e=>setPayForm({...payForm, job_date:e.target.value})} required /></div>}<p className="text-muted small mb-1">Amount</p><input type="number" className="form-control form-control-lg text-center fw-bold text-success fs-1 mb-3" placeholder="₹ 0" value={payForm.amount} onChange={e=>setPayForm({...payForm, amount:e.target.value})} autoFocus /><button onClick={handlePaySubmit} className="btn btn-success w-100 fw-bold py-2" disabled={!payForm.amount}>{editingItem ? 'Update' : 'Confirm'}</button></div></div></div></div>)}
         </div>
     );
 }
