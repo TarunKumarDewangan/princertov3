@@ -18,6 +18,10 @@ use App\Http\Controllers\Api\SpeedGovernorController;
 use App\Http\Controllers\Api\BackupController;
 use App\Http\Controllers\Api\GlobalSearchController;
 use App\Http\Controllers\Api\LedgerController;
+use App\Http\Controllers\Api\WorkJobController;
+use App\Http\Controllers\Api\ClientController;
+use App\Http\Controllers\Api\SettingsController;
+
 
 // Import Service
 use App\Services\WhatsAppService;
@@ -115,11 +119,16 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/work-jobs/dues/{clientId}', [App\Http\Controllers\Api\WorkJobController::class, 'getPendingDues']);
     Route::post('/work-jobs/pay', [App\Http\Controllers\Api\WorkJobController::class, 'processPayment']);
     Route::post('/work-jobs/send-reminder', [App\Http\Controllers\Api\WorkJobController::class, 'sendClientReminder']);
+    Route::put('/work-jobs/{id}', [App\Http\Controllers\Api\WorkJobController::class, 'update']);
 
+    Route::get('/work-jobs/client/{id}', [App\Http\Controllers\Api\WorkJobController::class, 'getClientHistory']);
     Route::get('/clients', [App\Http\Controllers\Api\ClientController::class, 'index']);
     Route::post('/clients', [App\Http\Controllers\Api\ClientController::class, 'store']);
-    Route::put('/clients/{id}', [App\Http\Controllers\Api\ClientController::class, 'update']);   // <--- NEW
-    Route::delete('/clients/{id}', [App\Http\Controllers\Api\ClientController::class, 'destroy']); // <--- NEW
+    Route::put('/clients/{id}', [App\Http\Controllers\Api\ClientController::class, 'update']);
+    Route::delete('/clients/{id}', [App\Http\Controllers\Api\ClientController::class, 'destroy']);
+
+    Route::get('/settings/notifications', [App\Http\Controllers\Api\SettingsController::class, 'getSettings']);
+    Route::post('/settings/notifications', [App\Http\Controllers\Api\SettingsController::class, 'updateSettings']);
 
     Route::post('/bulk-import', [App\Http\Controllers\Api\BulkImportController::class, 'import']);
 

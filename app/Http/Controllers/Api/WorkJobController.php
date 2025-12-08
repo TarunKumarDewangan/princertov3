@@ -10,54 +10,54 @@ use App\Services\WhatsAppService;
 class WorkJobController extends Controller
 {
     // 1. Get List / Search with Stats
+    // 1. Get List / Search with Stats
     public function index(Request $request)
     {
         $userId = $request->user()->id;
         $today = now()->format('Y-m-d');
 
-        // Fetch Clients for Dropdown
-        $clients = DB::table('clients')->where('user_id', $userId)->orderBy('name')->get();
+        // 1. Fetch Clients with Calculated Totals (Subqueries for performance)
+        $clients = DB::table('clients')
+            ->where('clients.user_id', $userId)
+            ->select(
+                'clients.id',
+                'clients.name',
+                'clients.mobile',
+                // Subquery for Total Bill
+                DB::raw('(SELECT COALESCE(SUM(bill_amount), 0) FROM work_jobs WHERE work_jobs.client_id = clients.id) as total_bill'),
+                // Subquery for Total Paid
+                DB::raw('(SELECT COALESCE(SUM(paid_amount), 0) FROM work_jobs WHERE work_jobs.client_id = clients.id) as total_paid'),
+                // Subquery for Last Work Date
+                DB::raw('(SELECT MAX(job_date) FROM work_jobs WHERE work_jobs.client_id = clients.id) as last_work_date')
+            )
+            ->orderBy('clients.name')
+            ->get();
 
-        // Build Query
+        // 2. Fetch Jobs (For Stats & Search functionality)
         $query = DB::table('work_jobs')
-            ->join('clients', 'work_jobs.client_id', '=', 'clients.id')
-            ->where('work_jobs.user_id', $userId)
-            ->select('work_jobs.*', 'clients.name as client_name', 'clients.mobile');
+            ->where('user_id', $userId);
 
-        // Filters
-        if ($request->client_id)
-            $query->where('work_jobs.client_id', $request->client_id);
         if ($request->from_date)
-            $query->whereDate('work_jobs.job_date', '>=', $request->from_date);
+            $query->whereDate('job_date', '>=', $request->from_date);
         if ($request->to_date)
-            $query->whereDate('work_jobs.job_date', '<=', $request->to_date);
-        if ($request->keyword) {
-            $k = $request->keyword;
-            $query->where(function ($q) use ($k) {
-                $q->where('work_jobs.vehicle_no', 'like', "%$k%")
-                    ->orWhere('work_jobs.description', 'like', "%$k%");
-            });
-        }
+            $query->whereDate('job_date', '<=', $request->to_date);
 
-        $jobs = $query->orderBy('work_jobs.job_date', 'desc')->get();
+        $jobs = $query->get();
 
-        // Stats
+        // --- STATS CALCULATION ---
         $allBill = DB::table('work_jobs')->where('user_id', $userId)->sum('bill_amount');
         $allPaid = DB::table('work_jobs')->where('user_id', $userId)->sum('paid_amount');
 
         $todayBill = DB::table('work_jobs')->where('user_id', $userId)->whereDate('job_date', $today)->sum('bill_amount');
         $todayPaid = DB::table('work_jobs')->where('user_id', $userId)->whereDate('job_date', $today)->sum('paid_amount');
 
-        $filterBill = $jobs->sum('bill_amount');
-        $filterPaid = $jobs->sum('paid_amount');
-
         return response()->json([
-            'clients' => $clients,
+            'clients' => $clients, // Now contains balances
             'jobs' => $jobs,
             'stats' => [
                 'all' => ['bill' => $allBill, 'paid' => $allPaid, 'due' => $allBill - $allPaid],
                 'daily' => ['bill' => $todayBill, 'paid' => $todayPaid, 'due' => $todayBill - $todayPaid],
-                'filtered' => ['bill' => $filterBill, 'paid' => $filterPaid, 'due' => $filterBill - $filterPaid]
+                'filtered' => ['bill' => 0, 'paid' => 0, 'due' => 0] // Not used in client view
             ]
         ]);
     }
@@ -220,5 +220,57 @@ class WorkJobController extends Controller
         } catch (\Exception $e) {
             return response()->json(['message' => 'WhatsApp Failed.'], 500);
         }
+    }
+    public function getClientHistory(Request $request, $clientId)
+    {
+        $userId = $request->user()->id;
+
+        $client = DB::table('clients')->where('id', $clientId)->where('user_id', $userId)->first();
+        if (!$client)
+            return response()->json(['message' => 'Client not found'], 404);
+
+        // Fetch all jobs/payments for this client
+        $jobs = DB::table('work_jobs')
+            ->where('client_id', $clientId)
+            ->where('user_id', $userId)
+            ->orderBy('job_date', 'asc') // Oldest first for timeline
+            ->get();
+
+        $totalBill = $jobs->sum('bill_amount');
+        $totalPaid = $jobs->sum('paid_amount');
+
+        return response()->json([
+            'client' => $client,
+            'history' => $jobs,
+            'summary' => [
+                'total_bill' => $totalBill,
+                'total_paid' => $totalPaid,
+                'balance' => $totalBill - $totalPaid
+            ]
+        ]);
+    }
+
+    public function update(Request $request, $id)
+    {
+        $request->validate([
+            'job_date' => 'required|date',
+            // bill_amount or paid_amount can be 0, but not both null usually
+        ]);
+
+        $userId = $request->user()->id;
+
+        DB::table('work_jobs')
+            ->where('id', $id)
+            ->where('user_id', $userId)
+            ->update([
+                'vehicle_no' => $request->vehicle_no ? strtoupper($request->vehicle_no) : null,
+                'description' => $request->description ? strtoupper($request->description) : 'PAYMENT RECEIVED',
+                'bill_amount' => $request->bill_amount ?? 0,
+                'paid_amount' => $request->paid_amount ?? 0,
+                'job_date' => $request->job_date,
+                'updated_at' => now()
+            ]);
+
+        return response()->json(['message' => 'Entry Updated']);
     }
 }

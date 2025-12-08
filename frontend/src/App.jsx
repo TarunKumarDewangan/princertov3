@@ -13,6 +13,8 @@ import BackupPage from './components/BackupPage';
 import CashFlow from './components/CashFlow';
 import BulkImport from './components/BulkImport';
 import WorkBook from './components/WorkBook';
+import Settings from './components/Settings';
+import ClientLedger from './components/ClientLedger';
 
 function App() {
   return (
@@ -36,6 +38,8 @@ function App() {
         <Route path="/cash-flow" element={<CashFlow />} />
         <Route path="/bulk-import" element={<BulkImport />} />
         <Route path="/work-book" element={<WorkBook />} />
+        <Route path="/settings" element={<Settings />} />
+        <Route path="/work-book/client/:id" element={<ClientLedger />} />
       </Routes>
     </BrowserRouter>
   );

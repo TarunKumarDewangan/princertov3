@@ -45,4 +45,9 @@ class User extends Authenticatable
     protected $casts = [
         'email_verified_at' => 'datetime',
     ];
+
+    public function settings()
+    {
+        return $this->hasOne(\App\Models\NotificationSetting::class); // Create this model if needed, or just use DB::table in command
+    }
 }
