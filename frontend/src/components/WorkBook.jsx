@@ -9,8 +9,10 @@ export default function WorkBook() {
     const [loading, setLoading] = useState(true);
     const [sendingMsgId, setSendingMsgId] = useState(null);
 
-    // --- FILTERS ---
-    const [filterType, setFilterType] = useState('today'); // 'today', 'all', 'custom'
+    // --- FILTERS STATE ---
+    // CHANGED DEFAULT TO 'all'
+    const [filterType, setFilterType] = useState('all'); // 'today', 'all', 'custom'
+
     const [selectedClient, setSelectedClient] = useState("");
     const [customDates, setCustomDates] = useState({
         from: new Date().toISOString().slice(0, 10),
@@ -18,10 +20,10 @@ export default function WorkBook() {
     });
     const [searchText, setSearchText] = useState("");
 
-    // --- DATA ---
+    // --- DATA STATE ---
     const [data, setData] = useState({
-        clients: [],
-        jobs: []
+        clients: [], // Master list
+        jobs: []     // Jobs filtered by date from API
     });
 
     // Modals
@@ -32,15 +34,12 @@ export default function WorkBook() {
     // --- 1. FETCH DATA ---
     useEffect(() => {
         fetchData();
-    }, [filterType, selectedClient, customDates.from, customDates.to]);
+    }, [filterType, customDates.from, customDates.to]); // Removed selectedClient dependency to keep master list loaded
 
     const fetchData = async () => {
         setLoading(true);
         try {
             const params = new URLSearchParams();
-
-            // Client Filter
-            if (selectedClient) params.append('client_id', selectedClient);
 
             // Date Filter
             if (filterType === 'today') {
@@ -51,54 +50,72 @@ export default function WorkBook() {
                 params.append('from_date', customDates.from);
                 params.append('to_date', customDates.to);
             }
+            // 'all' sends no date params
 
             const res = await api.get(`/api/work-jobs?${params.toString()}`);
             setData(res.data);
         } catch (error) {
             console.error(error);
+            toast.error("Failed to load data");
         } finally {
             setLoading(false);
         }
     };
 
-    // --- 2. GROUP DATA & CALCULATE STATS (Frontend Logic) ---
+    // --- 2. PREPARE TABLE DATA (CLIENT BASED) ---
     const tableData = useMemo(() => {
-        if (!data.jobs) return [];
+        if (!data.clients) return [];
 
-        const grouped = data.jobs.reduce((acc, job) => {
-            // Text Search Filter
-            if (searchText && !job.client_name.toLowerCase().includes(searchText.toLowerCase())) {
-                return acc;
+        // 1. Start with All Clients
+        let clientsToShow = data.clients;
+
+        // 2. Filter by Dropdown Selection
+        if (selectedClient) {
+            clientsToShow = clientsToShow.filter(c => c.id == selectedClient);
+        }
+
+        // 3. Filter by Search Text
+        if (searchText) {
+            const lowerSearch = searchText.toLowerCase();
+            clientsToShow = clientsToShow.filter(c =>
+                c.name.toLowerCase().includes(lowerSearch) ||
+                (c.mobile && c.mobile.includes(lowerSearch))
+            );
+        }
+
+        // 4. Map Clients to include their computed totals from data.jobs
+        return clientsToShow.map(client => {
+            // Find all loaded jobs for this client
+            // Note: data.jobs is already filtered by Date from API
+            const clientJobs = data.jobs.filter(job => job.client_id === client.id);
+
+            const bill = clientJobs.reduce((sum, job) => sum + Number(job.bill_amount), 0);
+            const paid = clientJobs.reduce((sum, job) => sum + Number(job.paid_amount), 0);
+
+            // Find latest activity date
+            let lastWorkDate = null;
+            if (clientJobs.length > 0) {
+                // Assuming API returns desc order, take first. Or sort to be safe.
+                lastWorkDate = clientJobs[0].job_date;
             }
 
-            if (!acc[job.client_id]) {
-                // Find client details safely
-                const clientInfo = data.clients.find(c => c.id === job.client_id) || {};
+            return {
+                id: client.id,
+                name: client.name,
+                mobile: client.mobile,
+                last_work: lastWorkDate,
+                bill: bill,
+                paid: paid,
+                // Use total_bill/total_paid from client object (if API sends lifetime totals) or calc
+                // Here we usually want Lifetime Due, not just filtered due.
+                // Assuming the API returns lifetime totals attached to client object?
+                // If not, we rely on the logic that 'all' filter gives lifetime.
+            };
+        });
 
-                acc[job.client_id] = {
-                    id: job.client_id,
-                    name: job.client_name || clientInfo.name || 'Unknown', // Fallback name
-                    mobile: job.mobile || clientInfo.mobile || '-',
-                    last_work: job.job_date,
-                    bill: 0,
-                    paid: 0
-                };
-            }
+    }, [data.clients, data.jobs, selectedClient, searchText]);
 
-            acc[job.client_id].bill += Number(job.bill_amount);
-            acc[job.client_id].paid += Number(job.paid_amount);
-
-            // Keep latest date
-            if (new Date(job.job_date) > new Date(acc[job.client_id].last_work)) {
-                acc[job.client_id].last_work = job.job_date;
-            }
-            return acc;
-        }, {});
-
-        return Object.values(grouped);
-    }, [data, searchText]);
-
-    // Calculate Top Stats based on Table Data
+    // Calculate Top Stats based on Visible Rows
     const currentStats = useMemo(() => {
         return tableData.reduce((acc, row) => {
             acc.bill += row.bill;
@@ -229,31 +246,28 @@ export default function WorkBook() {
                                     <th>Last Activity</th>
                                     <th className="text-end text-primary">Work ({filterType})</th>
                                     <th className="text-end text-success">Recv ({filterType})</th>
-                                    <th className="text-end text-dark pe-4">Total Due</th>
-                                    <th className="text-center d-print-none">Action</th>
+                                    <th className="text-end text-dark pe-4">Period Change</th>
+                                    <th className="d-print-none"></th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {loading ? (<tr><td colSpan="7" className="text-center py-5">Loading...</td></tr>) :
                                 tableData.length > 0 ? (tableData.map((row) => {
-                                    // Find LIFETIME Due from the main client object
-                                    const fullClient = data.clients.find(c => c.id === row.id) || {};
-                                    // Handle missing calculation if API didn't return sums for client
-                                    // Fallback: If filter is ALL, use row data, else use what's available
-                                    const totalDue = (fullClient.total_bill !== undefined)
-                                        ? (fullClient.total_bill - fullClient.total_paid)
-                                        : (row.bill - row.paid); // Fallback for safety
+                                    // Balance Change for the period
+                                    const balanceChange = row.bill - row.paid;
 
                                     return (
                                         <tr key={row.id} onClick={() => handleRowClick(row.id)} style={{cursor: 'pointer'}}>
                                             <td className="ps-4 fw-bold text-dark">
                                                 {row.name} <i className="bi bi-chevron-right small text-muted ms-1"></i>
                                             </td>
-                                            <td className="text-muted small">{row.mobile}</td>
-                                            <td className="small text-muted">{new Date(row.last_work).toLocaleDateString('en-GB')}</td>
+                                            <td className="text-muted small">{row.mobile || '-'}</td>
+                                            <td className="small text-muted">{row.last_work ? new Date(row.last_work).toLocaleDateString('en-GB') : '-'}</td>
                                             <td className="text-end fw-bold text-primary">₹{row.bill.toLocaleString()}</td>
                                             <td className="text-end fw-bold text-success">₹{row.paid.toLocaleString()}</td>
-                                            <td className="text-end fw-bold text-dark pe-4">₹{totalDue.toLocaleString()}</td>
+
+                                            {/* Shows balance change for the period */}
+                                            <td className="text-end fw-bold text-dark pe-4">₹{Number(balanceChange).toLocaleString()}</td>
 
                                             <td className="d-print-none text-center">
                                                 <button
@@ -267,7 +281,7 @@ export default function WorkBook() {
                                             </td>
                                         </tr>
                                     );
-                                })) : (<tr><td colSpan="7" className="text-center py-5 text-muted">No activity found for this period.</td></tr>)}
+                                })) : (<tr><td colSpan="7" className="text-center py-5 text-muted">No clients match the criteria.</td></tr>)}
                             </tbody>
                         </table>
                     </div>
