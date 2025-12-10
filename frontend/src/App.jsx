@@ -15,6 +15,7 @@ import BulkImport from './components/BulkImport';
 import WorkBook from './components/WorkBook';
 import Settings from './components/Settings';
 import ClientLedger from './components/ClientLedger';
+import LicenseFlow from './components/LicenseFlow';
 
 function App() {
   return (
@@ -40,6 +41,7 @@ function App() {
         <Route path="/work-book" element={<WorkBook />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/work-book/client/:id" element={<ClientLedger />} />
+        <Route path="/license-flow" element={<LicenseFlow />} />
       </Routes>
     </BrowserRouter>
   );

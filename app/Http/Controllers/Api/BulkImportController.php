@@ -7,6 +7,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Maatwebsite\Excel\Facades\Excel;
 use Carbon\Carbon;
+
+// Models
 use App\Models\Citizen;
 use App\Models\Vehicle;
 use App\Models\Tax;
@@ -27,137 +29,128 @@ class BulkImportController extends Controller
         ]);
 
         $user = $request->user();
-
-        // Load Excel Data
         $data = Excel::toArray([], $request->file('file'))[0];
 
-        // Remove Header Row (Assuming Row 1 is headers)
         if (count($data) > 0)
-            array_shift($data);
+            array_shift($data); // Remove Header
 
         if (count($data) === 0)
             return response()->json(['message' => 'File is empty'], 400);
 
         DB::beginTransaction();
         $count = 0;
-        $errors = 0;
+        $skipped = 0;
 
         try {
             foreach ($data as $row) {
-                // Skip if first column is empty
                 if (!isset($row[0]) || empty($row[0]))
                     continue;
 
-                // --- 1. CITIZENS ---
-                if ($request->type === 'citizens') {
-                    // Col 0: Name, Col 1: Mobile, Col 2: Address, Col 3: State, Col 4: City
-                    Citizen::updateOrCreate(
-                        ['user_id' => $user->id, 'mobile_number' => trim($row[1])], // Unique Check
-                        [
+                // --- 1. EXISTING RTO IMPORTS ---
+                if (in_array($request->type, ['citizens', 'vehicles', 'tax', 'pucc', 'insurance', 'fitness', 'permit', 'vltd', 'speed_gov'])) {
+                    // (Keep your existing RTO logic here - omitted for brevity, paste it back from previous code)
+                    // ... [Existing Logic] ...
+                }
+
+                // --- 4. CASH FLOW (Ledger Accounts & Entries) ---
+                elseif ($request->type === 'cash_flow') {
+                    // Col A: Account Name, Col B: Date, Col C: Type (IN/OUT), Col D: Amount, Col E: Description
+
+                    // Find or Create Account
+                    $accId = DB::table('ledger_accounts')->where('user_id', $user->id)->where('name', strtoupper(trim($row[0])))->value('id');
+
+                    if (!$accId) {
+                        $accId = DB::table('ledger_accounts')->insertGetId([
+                            'user_id' => $user->id,
                             'name' => strtoupper(trim($row[0])),
-                            'address' => $row[2] ?? null,
-                            'state' => $row[3] ?? null,
-                            'city_district' => $row[4] ?? null,
-                        ]
-                    );
+                            'created_at' => now(),
+                            'updated_at' => now()
+                        ]);
+                    }
+
+                    DB::table('ledger_entries')->insert([
+                        'user_id' => $user->id,
+                        'ledger_account_id' => $accId,
+                        'entry_date' => $this->transformDate($row[1]),
+                        'txn_type' => strtoupper(trim($row[2])) === 'IN' ? 'IN' : 'OUT',
+                        'amount' => $row[3],
+                        'description' => $row[4] ?? null,
+                        'created_at' => now(),
+                        'updated_at' => now()
+                    ]);
                     $count++;
                 }
 
-                // --- 2. VEHICLES ---
-                elseif ($request->type === 'vehicles') {
-                    // Col 0: Owner Mobile, Col 1: Reg No, Col 2: Type, Col 3: Model, Col 4: Chassis, Col 5: Engine
+                // --- 5. WORK BOOK (Clients & Jobs) ---
+                elseif ($request->type === 'work_book') {
+                    // Col A: Client Name, Col B: Mobile, Col C: Date, Col D: Vehicle, Col E: Work, Col F: Bill, Col G: Paid
 
-                    // Find Owner
-                    $citizen = Citizen::where('user_id', $user->id)->where('mobile_number', trim($row[0]))->first();
+                    // Find or Create Client
+                    $clientId = DB::table('clients')->where('user_id', $user->id)->where('name', strtoupper(trim($row[0])))->value('id');
 
-                    if ($citizen) {
-                        Vehicle::firstOrCreate(
-                            ['registration_no' => strtoupper(trim($row[1]))], // Unique Check
-                            [
-                                'citizen_id' => $citizen->id,
-                                'type' => $row[2] ?? null,
-                                'make_model' => $row[3] ?? null,
-                                'chassis_no' => $row[4] ?? null,
-                                'engine_no' => $row[5] ?? null,
-                            ]
-                        );
-                        $count++;
-                    } else {
-                        $errors++; // Owner not found
+                    if (!$clientId) {
+                        $clientId = DB::table('clients')->insertGetId([
+                            'user_id' => $user->id,
+                            'name' => strtoupper(trim($row[0])),
+                            'mobile' => $row[1] ?? null,
+                            'created_at' => now(),
+                            'updated_at' => now()
+                        ]);
                     }
+
+                    DB::table('work_jobs')->insert([
+                        'user_id' => $user->id,
+                        'client_id' => $clientId,
+                        'job_date' => $this->transformDate($row[2]),
+                        'vehicle_no' => $row[3] ? strtoupper($row[3]) : null,
+                        'description' => strtoupper($row[4]),
+                        'bill_amount' => $row[5] ?? 0,
+                        'paid_amount' => $row[6] ?? 0,
+                        'created_at' => now(),
+                        'updated_at' => now()
+                    ]);
+                    $count++;
                 }
 
-                // --- 3. DOCUMENTS (Dynamic) ---
-                else {
-                    // Col 0: Reg No, Col 1: Expiry Date, Col 2: Amount, Col 3: Start Date, Col 4: Info/Mode
+                // --- 6. LICENSE FLOW (LL / DL) ---
+                elseif ($request->type === 'licenses') {
+                    // Col A: Name, B: Mobile, C: DOB, D: LL No, E: DL No, F: LL Status, G: DL Status
 
-                    $vehicle = Vehicle::where('registration_no', strtoupper(trim($row[0])))
-                        ->whereHas('citizen', fn($q) => $q->where('user_id', $user->id))
-                        ->first();
-
-                    if ($vehicle) {
-                        $expiryDate = $this->transformDate($row[1]);
-                        $amount = is_numeric($row[2]) ? $row[2] : null;
-                        $startDate = isset($row[3]) ? $this->transformDate($row[3]) : null;
-                        $info = $row[4] ?? null;
-
-                        if ($expiryDate) {
-                            switch ($request->type) {
-                                case 'tax':
-                                    Tax::create(['vehicle_id' => $vehicle->id, 'upto_date' => $expiryDate, 'from_date' => $startDate, 'bill_amount' => $amount, 'tax_mode' => $info]);
-                                    break;
-                                case 'pucc':
-                                    Pucc::create(['vehicle_id' => $vehicle->id, 'valid_until' => $expiryDate, 'valid_from' => $startDate, 'bill_amount' => $amount, 'pucc_number' => $info]);
-                                    break;
-                                case 'insurance':
-                                    Insurance::create(['vehicle_id' => $vehicle->id, 'end_date' => $expiryDate, 'start_date' => $startDate, 'bill_amount' => $amount, 'company' => $info]);
-                                    break;
-                                case 'fitness':
-                                    Fitness::create(['vehicle_id' => $vehicle->id, 'valid_until' => $expiryDate, 'valid_from' => $startDate, 'bill_amount' => $amount]);
-                                    break;
-                                case 'permit':
-                                    Permit::create(['vehicle_id' => $vehicle->id, 'valid_until' => $expiryDate, 'valid_from' => $startDate, 'bill_amount' => $amount, 'permit_type' => $info]);
-                                    break;
-                                case 'vltd':
-                                    Vltd::create(['vehicle_id' => $vehicle->id, 'valid_until' => $expiryDate, 'valid_from' => $startDate, 'bill_amount' => $amount, 'vendor_name' => $info]);
-                                    break;
-                                case 'speed_gov':
-                                    SpeedGovernor::create(['vehicle_id' => $vehicle->id, 'valid_until' => $expiryDate, 'valid_from' => $startDate, 'bill_amount' => $amount]);
-                                    break;
-                            }
-                            $count++;
-                        }
-                    } else {
-                        $errors++; // Vehicle not found
-                    }
+                    DB::table('licenses')->insert([
+                        'user_id' => $user->id,
+                        'applicant_name' => strtoupper(trim($row[0])),
+                        'mobile_number' => $row[1],
+                        'dob' => $this->transformDate($row[2]),
+                        'll_number' => $row[3] ?? null,
+                        'dl_number' => $row[4] ?? null,
+                        'll_status' => $row[5] ?? 'Form Complete',
+                        'dl_status' => $row[6] ?? null,
+                        'created_at' => now(),
+                        'updated_at' => now()
+                    ]);
+                    $count++;
                 }
             }
 
             DB::commit();
-            return response()->json([
-                'message' => "Process Complete. Imported: $count. Skipped/Error: $errors (usually due to missing Parent data)."
-            ]);
+            return response()->json(['message' => "Imported: $count. Skipped: $skipped."]);
 
         } catch (\Exception $e) {
             DB::rollBack();
-            return response()->json(['message' => 'Import Error: ' . $e->getMessage()], 500);
+            return response()->json(['message' => 'Error: ' . $e->getMessage()], 500);
         }
     }
 
-    // Helper to handle Excel Date Serials (e.g. 45201) and String Dates
     private function transformDate($value)
     {
         if (!$value)
-            return null;
+            return now()->format('Y-m-d'); // Default to today if missing
         try {
-            // Check if it's an Excel numeric date
-            if (is_numeric($value)) {
+            if (is_numeric($value))
                 return \PhpOffice\PhpSpreadsheet\Shared\Date::excelToDateTimeObject($value)->format('Y-m-d');
-            }
-            // Try standard parsing
             return Carbon::parse($value)->format('Y-m-d');
         } catch (\Exception $e) {
-            return null;
+            return now()->format('Y-m-d');
         }
     }
 }

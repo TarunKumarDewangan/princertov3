@@ -132,6 +132,12 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::post('/bulk-import', [App\Http\Controllers\Api\BulkImportController::class, 'import']);
 
+
+    Route::get('/licenses', [App\Http\Controllers\Api\LicenseController::class, 'index']);
+    Route::post('/licenses', [App\Http\Controllers\Api\LicenseController::class, 'store']);
+    Route::put('/licenses/{id}', [App\Http\Controllers\Api\LicenseController::class, 'update']);
+    Route::delete('/licenses/{id}', [App\Http\Controllers\Api\LicenseController::class, 'destroy']);
+
     // --- TEST WHATSAPP ROUTE (UPDATED) ---
     Route::post('/admin/test-whatsapp', function (Request $request) {
         try {
