@@ -16,6 +16,7 @@ import WorkBook from './components/WorkBook';
 import Settings from './components/Settings';
 import ClientLedger from './components/ClientLedger';
 import LicenseFlow from './components/LicenseFlow';
+import ManageStaff from './components/ManageStaff';
 
 function App() {
   return (
@@ -42,6 +43,7 @@ function App() {
         <Route path="/settings" element={<Settings />} />
         <Route path="/work-book/client/:id" element={<ClientLedger />} />
         <Route path="/license-flow" element={<LicenseFlow />} />
+        <Route path="/manage-staff" element={<ManageStaff />} />
       </Routes>
     </BrowserRouter>
   );

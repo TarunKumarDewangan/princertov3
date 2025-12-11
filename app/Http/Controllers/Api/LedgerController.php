@@ -5,69 +5,80 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use App\Models\User;
 use App\Services\WhatsAppService;
 
 class LedgerController extends Controller
 {
-    // 1. Get Dashboard Data (Default View)
+    // --- HELPER: GET TEAM IDs ---
+    private function getTeamIds($user)
+    {
+        // If I am Staff (L0), my Boss is parent_id. If I am Boss (L1), I am the parent.
+        $bossId = $user->parent_id ?? $user->id;
+
+        // Return Boss ID + All Staff IDs linked to Boss
+        return User::where('id', $bossId)->orWhere('parent_id', $bossId)->pluck('id');
+    }
+
+    // --- 1. GET DASHBOARD DATA ---
     public function index(Request $request)
     {
-        $userId = $request->user()->id;
-        $today = now()->format('Y-m-d');
+        $user = $request->user();
+        $teamIds = $this->getTeamIds($user);
+        $bossId = $user->parent_id ?? $user->id; // Accounts belong to Boss
 
-        // Get Accounts
+        // Get Accounts (Owned by Boss)
         $accounts = DB::table('ledger_accounts')
-            ->where('user_id', $userId)
+            ->where('user_id', $bossId)
             ->orderBy('name')
             ->get();
 
-        // Get Recent Entries (Limit 50)
+        // Get Recent Entries (From Entire Team)
         $entries = DB::table('ledger_entries')
-            ->join('ledger_accounts', 'ledger_entries.ledger_account_id', '=', 'ledger_accounts.id')
-            ->where('ledger_entries.user_id', $userId)
-            ->select('ledger_entries.*', 'ledger_accounts.name as account_name', 'ledger_accounts.mobile as account_mobile')
+            ->leftJoin('ledger_accounts', 'ledger_entries.ledger_account_id', '=', 'ledger_accounts.id')
+            ->join('users', 'ledger_entries.user_id', '=', 'users.id') // Join Users to get Creator Name
+            ->whereIn('ledger_entries.user_id', $teamIds)
+            ->select(
+                'ledger_entries.*',
+                'ledger_accounts.name as account_name',
+                'ledger_accounts.mobile as account_mobile',
+                'users.name as created_by' // <--- Shows who made the entry
+            )
             ->orderBy('entry_date', 'desc')
             ->orderBy('id', 'desc')
             ->limit(50)
             ->get();
 
-        // --- CALCULATION LOGIC ---
+        // Calculate Totals (Team Wide)
+        $allIn = DB::table('ledger_entries')->whereIn('user_id', $teamIds)->where('txn_type', 'IN')->sum('amount');
+        $allOut = DB::table('ledger_entries')->whereIn('user_id', $teamIds)->where('txn_type', 'OUT')->sum('amount');
 
-        // 1. All Time
-        $allIn = DB::table('ledger_entries')->where('user_id', $userId)->where('txn_type', 'IN')->sum('amount');
-        $allOut = DB::table('ledger_entries')->where('user_id', $userId)->where('txn_type', 'OUT')->sum('amount');
-
-        // 2. Today (Daily)
-        $todayIn = DB::table('ledger_entries')->where('user_id', $userId)->where('txn_type', 'IN')->whereDate('entry_date', $today)->sum('amount');
-        $todayOut = DB::table('ledger_entries')->where('user_id', $userId)->where('txn_type', 'OUT')->whereDate('entry_date', $today)->sum('amount');
+        $today = now()->format('Y-m-d');
+        $todayIn = DB::table('ledger_entries')->whereIn('user_id', $teamIds)->where('txn_type', 'IN')->whereDate('entry_date', $today)->sum('amount');
+        $todayOut = DB::table('ledger_entries')->whereIn('user_id', $teamIds)->where('txn_type', 'OUT')->whereDate('entry_date', $today)->sum('amount');
 
         return response()->json([
             'accounts' => $accounts,
             'entries' => $entries,
             'stats' => [
-                'all' => [
-                    'in' => $allIn,
-                    'out' => $allOut,
-                    'balance' => $allIn - $allOut
-                ],
-                'daily' => [
-                    'in' => $todayIn,
-                    'out' => $todayOut,
-                    'balance' => $todayIn - $todayOut
-                ]
+                'all' => ['in' => $allIn, 'out' => $allOut, 'balance' => $allIn - $allOut],
+                'daily' => ['in' => $todayIn, 'out' => $todayOut, 'balance' => $todayIn - $todayOut]
             ]
         ]);
     }
 
-    // 2. Create Account Head
+    // --- 2. CREATE ACCOUNT ---
     public function storeAccount(Request $request)
     {
         $request->validate(['name' => 'required']);
+        // Always save account under Boss ID so everyone sees it
+        $ownerId = $request->user()->parent_id ?? $request->user()->id;
 
         $id = DB::table('ledger_accounts')->insertGetId([
-            'user_id' => $request->user()->id,
-            'name' => $request->name,
+            'user_id' => $ownerId,
+            'name' => strtoupper($request->name),
             'mobile' => $request->mobile ?? null,
+            'type' => 'general',
             'created_at' => now(),
             'updated_at' => now()
         ]);
@@ -75,23 +86,23 @@ class LedgerController extends Controller
         return response()->json(['message' => 'Account Created', 'id' => $id]);
     }
 
-    // 3. Make Entry (Cash In / Out / Work)
+    // --- 3. MAKE ENTRY ---
     public function storeEntry(Request $request)
     {
         $request->validate([
-            'ledger_account_id' => 'required',
             'txn_type' => 'required|in:IN,OUT',
             'amount' => 'required|numeric',
             'entry_date' => 'required|date'
         ]);
 
+        // Entry is saved with Current User ID (to track who made it)
         DB::table('ledger_entries')->insert([
             'user_id' => $request->user()->id,
-            'ledger_account_id' => $request->ledger_account_id,
+            'ledger_account_id' => $request->ledger_account_id, // Can be null
             'txn_type' => $request->txn_type,
             'amount' => $request->amount,
             'entry_date' => $request->entry_date,
-            'description' => $request->description,
+            'description' => strtoupper($request->description),
             'created_at' => now(),
             'updated_at' => now()
         ]);
@@ -99,34 +110,28 @@ class LedgerController extends Controller
         return response()->json(['message' => 'Entry Recorded']);
     }
 
-    // 4. Advanced Search & Filter
+    // --- 4. ADVANCED SEARCH ---
     public function search(Request $request)
     {
-        $userId = $request->user()->id;
+        $teamIds = $this->getTeamIds($request->user());
 
         $query = DB::table('ledger_entries')
-            ->join('ledger_accounts', 'ledger_entries.ledger_account_id', '=', 'ledger_accounts.id')
-            ->where('ledger_entries.user_id', $userId)
+            ->leftJoin('ledger_accounts', 'ledger_entries.ledger_account_id', '=', 'ledger_accounts.id')
+            ->join('users', 'ledger_entries.user_id', '=', 'users.id')
+            ->whereIn('ledger_entries.user_id', $teamIds)
             ->select(
                 'ledger_entries.*',
                 'ledger_accounts.name as account_name',
-                'ledger_accounts.mobile as account_mobile'
+                'ledger_accounts.mobile as account_mobile',
+                'users.name as created_by'
             );
 
-        // Filter by Account
-        if ($request->account_id) {
+        if ($request->account_id)
             $query->where('ledger_entries.ledger_account_id', $request->account_id);
-        }
-
-        // Filter by Date Range
-        if ($request->from_date) {
+        if ($request->from_date)
             $query->whereDate('ledger_entries.entry_date', '>=', $request->from_date);
-        }
-        if ($request->to_date) {
+        if ($request->to_date)
             $query->whereDate('ledger_entries.entry_date', '<=', $request->to_date);
-        }
-
-        // Filter by Keyword
         if ($request->keyword) {
             $k = $request->keyword;
             $query->where(function ($q) use ($k) {
@@ -136,8 +141,6 @@ class LedgerController extends Controller
         }
 
         $entries = $query->orderBy('ledger_entries.entry_date', 'desc')->get();
-
-        // Calculate Totals for this specific search result
         $totalIn = $entries->where('txn_type', 'IN')->sum('amount');
         $totalOut = $entries->where('txn_type', 'OUT')->sum('amount');
 
@@ -149,97 +152,68 @@ class LedgerController extends Controller
         ]);
     }
 
-    // 5. Send Balance Reminder (WhatsApp)
+    // --- 5. DELETE ENTRY (BOSS ONLY) ---
+    public function destroyEntry(Request $request, $id)
+    {
+        if ($request->user()->parent_id) { // If Staff
+            return response()->json(['message' => 'Permission Denied: Only Admin can delete.'], 403);
+        }
+
+        DB::table('ledger_entries')->where('id', $id)->delete();
+        return response()->json(['message' => 'Transaction Deleted']);
+    }
+
+    // --- 6. UPDATE ACCOUNT (BOSS ONLY) ---
+    public function updateAccount(Request $request, $id)
+    {
+        if ($request->user()->parent_id)
+            return response()->json(['message' => 'Unauthorized'], 403);
+
+        DB::table('ledger_accounts')->where('id', $id)
+            ->update(['name' => strtoupper($request->name), 'mobile' => $request->mobile ?? null]);
+
+        return response()->json(['message' => 'Account Updated']);
+    }
+
+    // --- 7. DELETE ACCOUNT (BOSS ONLY) ---
+    public function destroyAccount(Request $request, $id)
+    {
+        if ($request->user()->parent_id)
+            return response()->json(['message' => 'Unauthorized'], 403);
+
+        DB::table('ledger_accounts')->where('id', $id)->delete();
+        return response()->json(['message' => 'Account Deleted']);
+    }
+
+    // --- 8. SEND REMINDER ---
     public function sendBalanceReminder(Request $request, WhatsAppService $whatsapp)
     {
         $request->validate(['account_id' => 'required']);
         $user = $request->user();
 
-        // Fetch Account
-        $account = DB::table('ledger_accounts')
-            ->where('id', $request->account_id)
-            ->where('user_id', $user->id)
-            ->first();
+        // Determine Boss (API Key Owner)
+        $boss = $user->parent_id ? User::find($user->parent_id) : $user;
 
-        if (!$account)
-            return response()->json(['message' => 'Account not found'], 404);
-        if (!$account->mobile)
-            return response()->json(['message' => 'No mobile number linked to this account.'], 400);
+        $account = DB::table('ledger_accounts')->where('id', $request->account_id)->first();
+        if (!$account || !$account->mobile)
+            return response()->json(['message' => 'Invalid Account/Mobile'], 400);
 
-        // Calculate Total Lifetime Balance
+        // Calc Balance
         $totalIn = DB::table('ledger_entries')->where('ledger_account_id', $account->id)->where('txn_type', 'IN')->sum('amount');
         $totalOut = DB::table('ledger_entries')->where('ledger_account_id', $account->id)->where('txn_type', 'OUT')->sum('amount');
+        $bal = $totalIn - $totalOut;
 
-        $balance = $totalIn - $totalOut;
-        $absBalance = number_format(abs($balance), 2);
+        if (!$boss->whatsapp_key)
+            return response()->json(['message' => 'WhatsApp not configured.'], 400);
 
-        // Determine Context
-        if ($balance < 0) {
-            $msgType = "DUE (उधारी)";
-            $action = "Please pay this amount at the earliest.\nकृपया बकाया राशि का भुगतान करें।";
-        } else {
-            $msgType = "ADVANCE (जमा)";
-            $action = "This amount is available in your account.\nयह राशि आपके खाते में जमा है।";
-        }
-
-        $mobile = '91' . $account->mobile;
-        $message = "📢 *Prince RTO - Account Statement*\n\n"
-            . "Dear {$account->name},\n"
-            . "Current Balance: *₹ {$absBalance} {$msgType}*\n\n"
-            . "{$action}\n\n"
-            . "Regards,\n{$user->name}";
+        $msgType = $bal < 0 ? "DUE" : "ADVANCE";
+        $msg = "Dear {$account->name},\nBalance: *₹ " . abs($bal) . " {$msgType}*.\nRegards,\n{$boss->name}";
 
         try {
-            if (!$user->whatsapp_key) {
-                return response()->json(['message' => 'WhatsApp API not configured.'], 400);
-            }
-            $whatsapp->sendTextMessage($mobile, $message, $user->whatsapp_key, $user->whatsapp_host);
-            return response()->json(['message' => 'Reminder Sent Successfully!']);
+            $whatsapp->sendTextMessage('91' . $account->mobile, $msg, $boss->whatsapp_key, $boss->whatsapp_host);
+            return response()->json(['message' => 'Sent!']);
         } catch (\Exception $e) {
-            return response()->json(['message' => 'Failed to send WhatsApp.'], 500);
+            return response()->json(['message' => 'Failed'], 500);
         }
-    }
-
-    public function destroyEntry(Request $request, $id)
-    {
-        $deleted = DB::table('ledger_entries')
-            ->where('id', $id)
-            ->where('user_id', $request->user()->id) // Security check
-            ->delete();
-
-        if ($deleted)
-            return response()->json(['message' => 'Transaction Deleted']);
-        return response()->json(['message' => 'Not found or unauthorized'], 403);
-    }
-
-    // 7. Update Account Head
-    public function updateAccount(Request $request, $id)
-    {
-        $request->validate(['name' => 'required']);
-
-        $updated = DB::table('ledger_accounts')
-            ->where('id', $id)
-            ->where('user_id', $request->user()->id)
-            ->update([
-                'name' => $request->name,
-                'mobile' => $request->mobile ?? null,
-                'updated_at' => now()
-            ]);
-
-        return response()->json(['message' => 'Account Updated']);
-    }
-
-    // 8. Delete Account Head
-    public function destroyAccount(Request $request, $id)
-    {
-        // Because migration has onDelete('cascade'), deleting account deletes all its entries automatically.
-        $deleted = DB::table('ledger_accounts')
-            ->where('id', $id)
-            ->where('user_id', $request->user()->id)
-            ->delete();
-
-        if ($deleted)
-            return response()->json(['message' => 'Account and its history deleted']);
-        return response()->json(['message' => 'Not found'], 403);
     }
 }

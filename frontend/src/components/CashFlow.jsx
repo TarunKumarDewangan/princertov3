@@ -7,6 +7,10 @@ export default function CashFlow() {
     const [loading, setLoading] = useState(true);
     const [sendingMsgId, setSendingMsgId] = useState(null);
 
+    // --- AUTH CHECK ---
+    const user = JSON.parse(localStorage.getItem('user')) || {};
+    const isLevel1 = user.role === 'level_1' || user.role === 'super_admin'; // Only Boss sees Stats & Delete
+
     // Main Data
     const [data, setData] = useState({
         accounts: [],
@@ -67,39 +71,28 @@ export default function CashFlow() {
         } catch (error) { toast.error("Search Failed"); } finally { setLoading(false); }
     };
 
-    const handleDeleteEntry = async (id) => {
-        if(!confirm("Delete this transaction?")) return;
-        try { await api.delete(`/api/ledger/entry/${id}`); toast.success("Deleted"); if(isFiltered) handleSearch(); else fetchLedger(); } catch (error) { toast.error("Failed"); }
-    };
-
-    const handleSaveAccount = async (e) => {
+    const handleEntry = async (e) => {
         e.preventDefault();
         try {
-            if (isEditingAccount) await api.put(`/api/ledger/account/${accountForm.id}`, { name: accountForm.name.toUpperCase(), mobile: accountForm.mobile });
-            else await api.post('/api/ledger/account', { name: accountForm.name.toUpperCase(), mobile: accountForm.mobile });
-            toast.success(isEditingAccount ? "Updated" : "Created");
-            setAccountForm({ id: null, name: "", mobile: "" }); setIsEditingAccount(false); fetchLedger();
-        } catch (error) { toast.error("Operation Failed"); }
+            await api.post('/api/ledger/entry', {
+                ...entryForm,
+                ledger_account_id: entryForm.ledger_account_id || null,
+                description: entryForm.description.toUpperCase(),
+                txn_type: txnType
+            });
+            toast.success("Saved!");
+            setEntryForm({ ledger_account_id: "", amount: "", entry_date: new Date().toISOString().split('T')[0], description: "" });
+            setShowEntryModal(false); fetchLedger();
+        } catch (error) { toast.error("Failed"); }
     };
 
+    const handleDeleteEntry = async (id) => { if(!confirm("Delete?")) return; try { await api.delete(`/api/ledger/entry/${id}`); toast.success("Deleted"); if(isFiltered) handleSearch(); else fetchLedger(); } catch (error) { toast.error("Failed"); } };
+    const handleSaveAccount = async (e) => { e.preventDefault(); try { if (isEditingAccount) await api.put(`/api/ledger/account/${accountForm.id}`, { name: accountForm.name.toUpperCase(), mobile: accountForm.mobile }); else await api.post('/api/ledger/account', { name: accountForm.name.toUpperCase(), mobile: accountForm.mobile }); toast.success("Success"); setAccountForm({ id: null, name: "", mobile: "" }); setIsEditingAccount(false); fetchLedger(); } catch (error) { toast.error("Failed"); } };
     const handleEditAccountClick = (acc) => { setAccountForm({ id: acc.id, name: acc.name, mobile: acc.mobile || "" }); setIsEditingAccount(true); };
-
-    const handleDeleteAccount = async (id) => {
-        if(!confirm("WARNING: Deleting Account deletes ALL history!")) return;
-        try { await api.delete(`/api/ledger/account/${id}`); toast.success("Deleted"); setAccountForm({ id: null, name: "", mobile: "" }); setIsEditingAccount(false); fetchLedger(); } catch (error) { toast.error("Failed"); }
-    };
-
-    const handleSendReminder = async (accountId) => {
-        if(!accountId) return;
-        if(!confirm("Send WhatsApp reminder?")) return;
-        setSendingMsgId(accountId);
-        try { await api.post('/api/ledger/send-reminder', { account_id: accountId }); toast.success("Sent!"); } catch (error) { toast.error("Failed"); } finally { setSendingMsgId(null); }
-    };
-
+    const handleDeleteAccount = async (id) => { if(!confirm("Delete?")) return; try { await api.delete(`/api/ledger/account/${id}`); toast.success("Deleted"); fetchLedger(); } catch (error) { toast.error("Failed"); } };
+    const handleSendReminder = async (accountId) => { if(!accountId) return; if(!confirm("Send WhatsApp?")) return; setSendingMsgId(accountId); try { await api.post('/api/ledger/send-reminder', { account_id: accountId }); toast.success("Sent!"); } catch (error) { toast.error("Failed"); } finally { setSendingMsgId(null); } };
     const clearFilters = () => { setFilters({ account_id: "", from_date: "", to_date: "", keyword: "" }); setIsFiltered(false); fetchLedger(); };
     const handlePrint = () => { window.print(); };
-
-    const handleEntry = async (e) => { e.preventDefault(); if(!entryForm.ledger_account_id) return toast.error("Select Account"); try { await api.post('/api/ledger/entry', { ...entryForm, description: entryForm.description.toUpperCase(), txn_type: txnType }); toast.success("Saved!"); setEntryForm({ ledger_account_id: "", amount: "", entry_date: new Date().toISOString().split('T')[0], description: "" }); setShowEntryModal(false); fetchLedger(); } catch (error) { toast.error("Failed"); } };
 
     return (
         <div className="bg-light min-vh-100">
@@ -113,42 +106,45 @@ export default function CashFlow() {
 
             <div className="container mt-4 pb-5">
 
-                {/* 1. STATS */}
-                <div className="row g-3 mb-4 d-print-none">
-                    <div className="col-md-4">
-                        <div className="card border-0 shadow-sm p-3 bg-white h-100 border-start border-5 border-primary position-relative">
-                            <div className="d-flex justify-content-between align-items-start mb-1">
-                                <small className="text-muted fw-bold">NET BALANCE</small>
-                                {!isFiltered && (
-                                    <div className="btn-group btn-group-sm" role="group">
-                                        <button type="button" className={`btn ${viewMode === 'daily' ? 'btn-primary' : 'btn-outline-primary'}`} onClick={() => setViewMode('daily')}>Today</button>
-                                        <button type="button" className={`btn ${viewMode === 'all' ? 'btn-primary' : 'btn-outline-primary'}`} onClick={() => setViewMode('all')}>All</button>
-                                    </div>
-                                )}
-                                {isFiltered && <span className="badge bg-warning text-dark">Filtered</span>}
+                {/* 1. STATS (HIDDEN FOR LEVEL 0) */}
+                {isLevel1 && (
+                    <div className="row g-3 mb-4 d-print-none">
+                        <div className="col-md-4">
+                            <div className="card border-0 shadow-sm p-3 bg-white h-100 border-start border-5 border-primary position-relative">
+                                <div className="d-flex justify-content-between align-items-start mb-1">
+                                    <small className="text-muted fw-bold">NET BALANCE</small>
+                                    {!isFiltered && (
+                                        <div className="btn-group btn-group-sm" role="group">
+                                            <button type="button" className={`btn ${viewMode === 'daily' ? 'btn-primary' : 'btn-outline-primary'}`} onClick={() => setViewMode('daily')}>Today</button>
+                                            <button type="button" className={`btn ${viewMode === 'all' ? 'btn-primary' : 'btn-outline-primary'}`} onClick={() => setViewMode('all')}>All</button>
+                                        </div>
+                                    )}
+                                </div>
+                                <h2 className={`fw-bold mb-0 ${currentStats.balance >= 0 ? 'text-primary' : 'text-danger'}`}>{currentStats.balance >= 0 ? 'Cr ' : 'Dr '} ₹{Number(Math.abs(currentStats.balance)).toLocaleString()}</h2>
+                                {filters.account_id && (<button onClick={() => handleSendReminder(filters.account_id)} className="btn btn-sm btn-success position-absolute bottom-0 end-0 m-3 fw-bold" disabled={sendingMsgId === filters.account_id}>{sendingMsgId === filters.account_id ? <span>...</span> : <span><i className="bi bi-whatsapp me-1"></i> Send Due</span>}</button>)}
                             </div>
-                            <h2 className={`fw-bold mb-0 ${currentStats.balance >= 0 ? 'text-primary' : 'text-danger'}`}>
-                                {currentStats.balance >= 0 ? 'Cr ' : 'Dr '} ₹{Number(Math.abs(currentStats.balance)).toLocaleString()}
-                            </h2>
-                            {filters.account_id && (<button onClick={() => handleSendReminder(filters.account_id)} className="btn btn-sm btn-success position-absolute bottom-0 end-0 m-3 fw-bold" disabled={sendingMsgId === filters.account_id}>{sendingMsgId === filters.account_id ? <span>...</span> : <span><i className="bi bi-whatsapp me-1"></i> Send Due</span>}</button>)}
                         </div>
+                        <div className="col-6 col-md-4"><div className="card border-0 shadow-sm p-3 bg-success-subtle h-100"><small className="text-success fw-bold">TOTAL IN (CREDIT)</small><h4 className="fw-bold mb-0 text-success">₹{Number(currentStats.in).toLocaleString()}</h4></div></div>
+                        <div className="col-6 col-md-4"><div className="card border-0 shadow-sm p-3 bg-danger-subtle h-100"><small className="text-danger fw-bold">TOTAL OUT (DEBIT)</small><h4 className="fw-bold mb-0 text-danger">₹{Number(currentStats.out).toLocaleString()}</h4></div></div>
                     </div>
-                    <div className="col-6 col-md-4"><div className="card border-0 shadow-sm p-3 bg-success-subtle h-100"><div className="d-flex justify-content-between align-items-center"><div><small className="text-success fw-bold">TOTAL IN (CREDIT)</small><h4 className="fw-bold mb-0 text-success">₹{Number(currentStats.in).toLocaleString()}</h4></div><i className="bi bi-arrow-down-circle-fill fs-1 text-success opacity-50"></i></div></div></div>
-                    <div className="col-6 col-md-4"><div className="card border-0 shadow-sm p-3 bg-danger-subtle h-100"><div className="d-flex justify-content-between align-items-center"><div><small className="text-danger fw-bold">TOTAL OUT (DEBIT)</small><h4 className="fw-bold mb-0 text-danger">₹{Number(currentStats.out).toLocaleString()}</h4></div><i className="bi bi-arrow-up-circle-fill fs-1 text-danger opacity-50"></i></div></div></div>
-                </div>
+                )}
 
                 {/* 2. ACTIONS */}
                 <div className="card border-0 shadow-sm mb-4 d-print-none">
                     <div className="card-body p-4">
                         <h5 className="fw-bold mb-3">Quick Actions</h5>
                         <div className="row g-3">
-                            <div className="col-md-6"><button onClick={() => { setAccountForm({ id: null, name: "", mobile: "" }); setIsEditingAccount(false); setShowAccountModal(true); }} className="btn btn-outline-primary w-100 py-3 fw-bold border-2 shadow-sm"><i className="bi bi-gear-fill me-2"></i> Manage Accounts</button></div>
-                            <div className="col-md-6"><button onClick={() => {setTxnType("IN"); setShowEntryModal(true);}} className="btn btn-primary w-100 py-3 fw-bold shadow-sm"><i className="bi bi-cash-coin me-2"></i> Cash In / Out</button></div>
+                            <div className="col-md-6">
+                                <button onClick={() => { setAccountForm({ id: null, name: "", mobile: "" }); setIsEditingAccount(false); setShowAccountModal(true); }} className="btn btn-outline-primary w-100 py-3 fw-bold border-2 shadow-sm"><i className="bi bi-gear-fill me-2"></i> Manage Accounts</button>
+                            </div>
+                            <div className="col-md-6">
+                                <button onClick={() => {setTxnType("IN"); setShowEntryModal(true);}} className="btn btn-primary w-100 py-3 fw-bold shadow-sm"><i className="bi bi-cash-coin me-2"></i> Cash In / Out</button>
+                            </div>
                         </div>
                     </div>
                 </div>
 
-                {/* 3. REPORT FILTER */}
+                {/* 3. FILTER */}
                 <div className="card border-0 shadow-sm mb-4">
                     <div className="card-header bg-white py-3 fw-bold d-flex justify-content-between align-items-center d-print-none">
                         <span><i className="bi bi-filter-circle me-2"></i> Filter Data</span>
@@ -165,83 +161,90 @@ export default function CashFlow() {
                     </div>
                 </div>
 
-                {/* 4. TRANSACTION DATA (Responsive) */}
+                {/* 4. TABLE */}
                 <div className="card border-0 shadow-sm">
                     <div className="card-header bg-white py-3 fw-bold border-bottom d-print-none">
-                        {isFiltered ? <span className="text-primary">Filtered Results ({data.entries.length})</span> : "Recent Transactions"}
+                        {isFiltered ? "Filtered Results" : "Recent Transactions"}
                     </div>
 
-                    {/* --- DESKTOP VIEW (Standard Table) --- */}
                     <div className="table-responsive d-none d-md-block">
                         <table className="table table-hover mb-0 align-middle table-bordered border-light" style={{fontSize: '0.95rem'}}>
-                            <thead className="table-light"><tr><th className="ps-3" style={{width: '15%'}}>Date</th><th style={{width: '25%'}}>Account Details</th><th>Description</th><th className="text-center" style={{width: '10%'}}>Type</th><th className="text-end pe-3" style={{width: '15%'}}>Amount</th><th className="text-center d-print-none" style={{width: '10%'}}>Action</th></tr></thead>
+                            <thead className="table-light"><tr><th className="ps-3">Date</th><th>Account Details</th><th>Description</th><th>Entry By</th><th className="text-center">Type</th><th className="text-end pe-3">Amount</th>{isLevel1 && <th className="text-center d-print-none">Action</th>}</tr></thead>
                             <tbody>
-                                {loading ? (<tr><td colSpan="6" className="text-center py-5">Loading...</td></tr>) : data.entries.length > 0 ? (data.entries.map((entry) => (
+                                {loading ? (<tr><td colSpan="7" className="text-center py-5">Loading...</td></tr>) : data.entries.length > 0 ? (data.entries.map((entry) => (
                                     <tr key={entry.id}>
                                         <td className="ps-3">{new Date(entry.entry_date).toLocaleDateString('en-GB')}</td>
-                                        <td><div className="fw-bold text-dark">{entry.account_name}</div>{entry.account_mobile && <small className="text-muted"><i className="bi bi-phone"></i> {entry.account_mobile}</small>}</td>
+                                        <td>
+                                            <div className="fw-bold text-dark">{entry.account_name || 'General Cash'}</div>
+                                            {entry.account_mobile && <small className="text-muted"><i className="bi bi-phone"></i> {entry.account_mobile}</small>}
+                                        </td>
                                         <td>{entry.description || '-'}</td>
-                                        <td className="text-center">{entry.txn_type === 'IN' ? <span className="badge bg-success-subtle text-success border border-success">CREDIT</span> : <span className="badge bg-danger-subtle text-danger border border-danger">DEBIT</span>}</td>
+                                        <td className="small text-secondary fst-italic">{entry.created_by || 'Unknown'}</td>
+                                        <td className="text-center">{entry.txn_type === 'IN' ? <span className="badge bg-success-subtle text-success">CREDIT</span> : <span className="badge bg-danger-subtle text-danger">DEBIT</span>}</td>
                                         <td className={`text-end pe-3 fw-bold ${entry.txn_type === 'IN' ? 'text-success' : 'text-danger'}`}>{entry.txn_type === 'IN' ? '+' : '-'} ₹{Number(entry.amount).toLocaleString()}</td>
-                                        <td className="text-center d-print-none"><div className="d-flex gap-2 justify-content-center"><button onClick={() => handleSendReminder(entry.ledger_account_id)} className="btn btn-sm btn-outline-success border-0"><i className="bi bi-whatsapp"></i></button><button onClick={() => handleDeleteEntry(entry.id)} className="btn btn-sm btn-outline-danger border-0"><i className="bi bi-trash"></i></button></div></td>
+
+                                        {/* Actions: Boss Only */}
+                                        {isLevel1 && (
+                                            <td className="text-center d-print-none">
+                                                <div className="d-flex gap-2 justify-content-center">
+                                                    {entry.ledger_account_id && entry.account_mobile && <button onClick={() => handleSendReminder(entry.ledger_account_id)} className="btn btn-sm btn-outline-success border-0"><i className="bi bi-whatsapp"></i></button>}
+                                                    <button onClick={() => handleDeleteEntry(entry.id)} className="btn btn-sm btn-outline-danger border-0"><i className="bi bi-trash"></i></button>
+                                                </div>
+                                            </td>
+                                        )}
                                     </tr>
-                                ))) : (<tr><td colSpan="6" className="text-center py-5 text-muted">No records found.</td></tr>)}
+                                ))) : (<tr><td colSpan="7" className="text-center py-5 text-muted">No records found.</td></tr>)}
                             </tbody>
-                            <tfoot className="table-light fw-bold"><tr><td colSpan="4" className="text-end">NET TOTALS:</td><td className={`text-end pe-3 fs-5 ${currentStats.balance >= 0 ? 'text-primary' : 'text-danger'}`}>{currentStats.balance >= 0 ? 'Cr ' : 'Dr '} ₹{Number(Math.abs(currentStats.balance)).toLocaleString()}</td><td className="d-print-none"></td></tr></tfoot>
+
+                            {/* Footer: Boss Only */}
+                            {isLevel1 && (
+                                <tfoot className="table-light fw-bold"><tr><td colSpan="5" className="text-end">NET TOTALS:</td><td className={`text-end pe-3 fs-5 ${currentStats.balance >= 0 ? 'text-primary' : 'text-danger'}`}>{currentStats.balance >= 0 ? 'Cr ' : 'Dr '} ₹{Number(Math.abs(currentStats.balance)).toLocaleString()}</td><td className="d-print-none"></td></tr></tfoot>
+                            )}
                         </table>
                     </div>
-
-                    {/* --- MOBILE VIEW (Cards Layout) --- */}
-                    <div className="d-block d-md-none bg-light p-2">
-                        {loading ? (<div className="text-center py-5">Loading...</div>) : data.entries.length > 0 ? (data.entries.map((entry) => (
-                            <div className="card shadow-sm border-0 mb-3" key={entry.id}>
-                                <div className="card-body p-3">
-                                    {/* Header: Name and Date */}
-                                    <div className="d-flex justify-content-between align-items-center mb-2 border-bottom pb-2">
-                                        <div className="fw-bold fs-5 text-dark text-truncate" style={{maxWidth: '65%'}}>
-                                            {entry.account_name}
-                                        </div>
-                                        <small className="text-muted"><i className="bi bi-calendar"></i> {new Date(entry.entry_date).toLocaleDateString('en-GB')}</small>
-                                    </div>
-
-                                    {/* Body: Description */}
-                                    <div className="bg-light p-2 rounded small text-secondary mb-3">
-                                        {entry.description || 'No description provided.'}
-                                    </div>
-
-                                    {/* Footer: Amount & Actions */}
-                                    <div className="d-flex justify-content-between align-items-center">
-                                        <div>
-                                            <span className={`badge ${entry.txn_type === 'IN' ? 'bg-success-subtle text-success' : 'bg-danger-subtle text-danger'} me-2`}>
-                                                {entry.txn_type === 'IN' ? 'IN' : 'OUT'}
-                                            </span>
-                                            <span className={`fw-bold fs-5 ${entry.txn_type === 'IN' ? 'text-success' : 'text-danger'}`}>
-                                                ₹{Number(entry.amount).toLocaleString()}
-                                            </span>
-                                        </div>
-                                        <div className="d-flex gap-3">
-                                            <button onClick={() => handleSendReminder(entry.ledger_account_id)} className="btn btn-link p-0 text-success"><i className="bi bi-whatsapp fs-3"></i></button>
-                                            <button onClick={() => handleDeleteEntry(entry.id)} className="btn btn-link p-0 text-danger"><i className="bi bi-trash fs-3"></i></button>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        ))) : (<div className="text-center py-5 text-muted">No records found.</div>)}
-
-                        {/* Mobile Summary Footer */}
-                        <div className="card border-0 bg-dark text-white text-center p-3 mt-3">
-                            <small className="text-white-50 text-uppercase">Net Balance ({isFiltered ? 'Filtered' : (viewMode === 'daily' ? 'Today' : 'All')})</small>
-                            <h2 className="fw-bold mb-0"> {currentStats.balance >= 0 ? 'Cr ' : 'Dr '} ₹{Number(Math.abs(currentStats.balance)).toLocaleString()}</h2>
-                        </div>
-                    </div>
-
                 </div>
             </div>
 
-            {/* MODALS REMAIN UNCHANGED (Copy AccountModal and EntryModal from previous) */}
+            {/* MODALS REMAIN SAME - Copy previous logic for Modals */}
+             {/* Account Modal */}
             {showAccountModal && (<div className="modal d-block" style={{backgroundColor:'rgba(0,0,0,0.5)'}}><div className="modal-dialog modal-dialog-centered modal-lg"><div className="modal-content border-0 shadow-lg"><div className="modal-header"><h5 className="modal-title fw-bold">Manage Account Heads</h5><button className="btn-close" onClick={()=>setShowAccountModal(false)}></button></div><div className="modal-body p-4"><form onSubmit={handleSaveAccount} className="row g-2 align-items-end mb-4 border-bottom pb-4"><div className="col-md-5"><label className="form-label fw-bold small">Account Name *</label><input type="text" className="form-control" placeholder="e.g. RENT" value={accountForm.name} onChange={e => setAccountForm({...accountForm, name: e.target.value.toUpperCase()})} required /></div><div className="col-md-4"><label className="form-label fw-bold small">Mobile (Optional)</label><input type="number" className="form-control" placeholder="10-digit mobile" value={accountForm.mobile} onChange={e => setAccountForm({...accountForm, mobile: e.target.value})} /></div><div className="col-md-3"><button type="submit" className={`btn w-100 fw-bold ${isEditingAccount ? 'btn-warning' : 'btn-primary'}`}>{isEditingAccount ? 'Update' : 'Create'}</button></div>{isEditingAccount && <div className="col-12 text-end"><button type="button" onClick={() => { setIsEditingAccount(false); setAccountForm({id:null, name:"", mobile:""}) }} className="btn btn-link btn-sm text-muted">Cancel Edit</button></div>}</form><h6 className="fw-bold text-muted mb-3">Existing Accounts</h6><div className="table-responsive" style={{maxHeight: '300px', overflowY: 'auto'}}><table className="table table-sm table-hover align-middle"><thead className="table-light sticky-top"><tr><th>Name</th><th>Mobile</th><th className="text-end">Actions</th></tr></thead><tbody>{data.accounts.map(acc => (<tr key={acc.id}><td className="fw-bold">{acc.name}</td><td className="text-muted">{acc.mobile || '-'}</td><td className="text-end"><button onClick={() => handleEditAccountClick(acc)} className="btn btn-sm btn-link text-primary me-2"><i className="bi bi-pencil-square"></i></button><button onClick={() => handleDeleteAccount(acc.id)} className="btn btn-sm btn-link text-danger"><i className="bi bi-trash"></i></button></td></tr>))}</tbody></table></div></div></div></div></div>)}
-            {showEntryModal && (<div className="modal d-block" style={{backgroundColor:'rgba(0,0,0,0.5)'}}><div className="modal-dialog modal-dialog-centered"><div className="modal-content border-0 shadow-lg"><div className="modal-header border-bottom-0 pb-0"><h5 className="modal-title fw-bold">Cash Transaction</h5><button className="btn-close" onClick={()=>setShowEntryModal(false)}></button></div><div className="modal-body p-4"><form onSubmit={handleEntry}><div className="d-flex gap-2 mb-4 p-1 bg-light rounded-pill border"><button type="button" className={`btn w-50 rounded-pill fw-bold ${txnType === 'IN' ? 'btn-success shadow-sm' : 'text-muted'}`} onClick={() => setTxnType("IN")}>CASH IN</button><button type="button" className={`btn w-50 rounded-pill fw-bold ${txnType === 'OUT' ? 'btn-danger shadow-sm' : 'text-muted'}`} onClick={() => setTxnType("OUT")}>CASH OUT</button></div><div className="mb-3"><label className="form-label small fw-bold text-muted">Select Account</label><select className="form-select" value={entryForm.ledger_account_id} onChange={e => setEntryForm({...entryForm, ledger_account_id: e.target.value})} required><option value="">Choose...</option>{data.accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name} {acc.mobile ? `(${acc.mobile})` : ''}</option>)}</select></div><div className="row mb-3"><div className="col-6"><label className="form-label small fw-bold text-muted">Amount (₹)</label><input type="number" className="form-control fw-bold fs-5" placeholder="0" value={entryForm.amount} onChange={e => setEntryForm({...entryForm, amount: e.target.value})} required /></div><div className="col-6"><label className="form-label small fw-bold text-muted">Date</label><input type="date" className="form-control" value={entryForm.entry_date} onChange={e => setEntryForm({...entryForm, entry_date: e.target.value})} required /></div></div><div className="mb-3"><label className="form-label small fw-bold text-muted">Description</label><input type="text" className="form-control" placeholder="NOTES..." value={entryForm.description} onChange={e => setEntryForm({...entryForm, description: e.target.value.toUpperCase()})} /></div><div className="d-grid mt-4"><button type="submit" className={`btn py-2 fw-bold ${txnType === 'IN' ? 'btn-success' : 'btn-danger'}`}>{txnType === 'IN' ? 'Receive Payment' : 'Record Expense'}</button></div></form></div></div></div></div>)}
 
+            {/* CASH ENTRY MODAL */}
+            {showEntryModal && (
+                <div className="modal d-block" style={{backgroundColor:'rgba(0,0,0,0.5)'}}>
+                    <div className="modal-dialog modal-dialog-centered">
+                        <div className="modal-content border-0 shadow-lg">
+                            <div className="modal-header border-bottom-0 pb-0">
+                                <h5 className="modal-title fw-bold">Cash Transaction</h5>
+                                <button className="btn-close" onClick={()=>setShowEntryModal(false)}></button>
+                            </div>
+                            <div className="modal-body p-4">
+                                <form onSubmit={handleEntry}>
+                                    <div className="d-flex gap-2 mb-4 p-1 bg-light rounded-pill border">
+                                        <button type="button" className={`btn w-50 rounded-pill fw-bold ${txnType === 'IN' ? 'btn-success shadow-sm' : 'text-muted'}`} onClick={() => setTxnType("IN")}>CASH IN</button>
+                                        <button type="button" className={`btn w-50 rounded-pill fw-bold ${txnType === 'OUT' ? 'btn-danger shadow-sm' : 'text-muted'}`} onClick={() => setTxnType("OUT")}>CASH OUT</button>
+                                    </div>
+
+                                    <div className="mb-3">
+                                        <label className="form-label small fw-bold text-muted">Select Account (Optional)</label>
+                                        <select className="form-select" value={entryForm.ledger_account_id} onChange={e => setEntryForm({...entryForm, ledger_account_id: e.target.value})}>
+                                            <option value="">-- General / None --</option>
+                                            {data.accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name} {acc.mobile ? `(${acc.mobile})` : ''}</option>)}
+                                        </select>
+                                    </div>
+
+                                    <div className="row mb-3">
+                                        <div className="col-6"><label className="form-label small fw-bold text-muted">Amount (₹)</label><input type="number" className="form-control fw-bold fs-5" placeholder="0" value={entryForm.amount} onChange={e => setEntryForm({...entryForm, amount: e.target.value})} required /></div>
+                                        <div className="col-6"><label className="form-label small fw-bold text-muted">Date</label><input type="date" className="form-control" value={entryForm.entry_date} onChange={e => setEntryForm({...entryForm, entry_date: e.target.value})} required /></div>
+                                    </div>
+                                    <div className="mb-3"><label className="form-label small fw-bold text-muted">Description</label><input type="text" className="form-control" placeholder="NOTES..." value={entryForm.description} onChange={e => setEntryForm({...entryForm, description: e.target.value.toUpperCase()})} /></div>
+                                    <div className="d-grid mt-4"><button type="submit" className={`btn py-2 fw-bold ${txnType === 'IN' ? 'btn-success' : 'btn-danger'}`}>{txnType === 'IN' ? 'Receive Payment' : 'Record Expense'}</button></div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

@@ -24,7 +24,8 @@ class User extends Authenticatable
         'role',
         'is_active',
         'whatsapp_key', // Added
-        'whatsapp_host' // Added
+        'whatsapp_host', // Added
+        'parent_id', // <--- THIS WAS MISSING
     ];
 
     /**
@@ -49,5 +50,17 @@ class User extends Authenticatable
     public function settings()
     {
         return $this->hasOne(\App\Models\NotificationSetting::class); // Create this model if needed, or just use DB::table in command
+    }
+    public function getOwnerId()
+    {
+        return $this->parent_id ?? $this->id;
+    }
+
+    /**
+     * Check if I am a Subordinate (View Only for now)
+     */
+    public function isSubordinate()
+    {
+        return !is_null($this->parent_id);
     }
 }

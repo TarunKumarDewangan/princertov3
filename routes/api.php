@@ -21,6 +21,9 @@ use App\Http\Controllers\Api\LedgerController;
 use App\Http\Controllers\Api\WorkJobController;
 use App\Http\Controllers\Api\ClientController;
 use App\Http\Controllers\Api\SettingsController;
+use App\Http\Controllers\Api\BulkImportController;
+use App\Http\Controllers\Api\LicenseController;
+use app\Http\Controllers\Api\SubUserController;
 
 
 // Import Service
@@ -137,6 +140,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/licenses', [App\Http\Controllers\Api\LicenseController::class, 'store']);
     Route::put('/licenses/{id}', [App\Http\Controllers\Api\LicenseController::class, 'update']);
     Route::delete('/licenses/{id}', [App\Http\Controllers\Api\LicenseController::class, 'destroy']);
+
+    Route::get('/staff', [App\Http\Controllers\Api\SubUserController::class, 'index']);
+    Route::post('/staff', [App\Http\Controllers\Api\SubUserController::class, 'store']);
+    Route::delete('/staff/{id}', [App\Http\Controllers\Api\SubUserController::class, 'destroy']);
 
     // --- TEST WHATSAPP ROUTE (UPDATED) ---
     Route::post('/admin/test-whatsapp', function (Request $request) {

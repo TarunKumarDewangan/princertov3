@@ -5,23 +5,41 @@ import UserNavbar from './UserNavbar';
 
 export default function LicenseFlow() {
     const [list, setList] = useState([]);
-
-    // Filters
     const [search, setSearch] = useState("");
     const [dateRange, setDateRange] = useState({ from: '', to: '' });
 
-    // Modal State
     const [showModal, setShowModal] = useState(false);
     const [step, setStep] = useState(1);
     const [editingId, setEditingId] = useState(null);
     const [enterDL, setEnterDL] = useState(false);
 
-    // Form State
+    // Permission
+    const user = JSON.parse(localStorage.getItem('user'));
+    const canEdit = user?.role !== 'level_0';
+
+    // Form
     const [form, setForm] = useState({
         applicant_name: "", dob: "", mobile_number: "", application_no: "", address: "",
         ll_number: "", categories: [], ll_valid_from: "", ll_valid_upto: "", ll_status: "Form Complete",
-        dl_status: "", dl_app_no: "", dl_number: "", dl_valid_from: "", dl_valid_upto: ""
+        dl_status: "", dl_app_no: "", dl_number: "", dl_valid_from: "", dl_valid_upto: "",
+
+        // SHARED FINANCIALS
+        ll_bill_amount: "", ll_paid_amount: "",
+        dl_bill_amount: "", dl_paid_amount: "" // We will sync these or just use one set
     });
+
+    // Helper: Sync Financials (When LL amount changes, update DL amount too)
+    const handleFinanceChange = (field, value) => {
+        setForm(prev => {
+            const newState = { ...prev, [field]: value };
+            // If LL Bill changes, sync DL Bill (and vice versa if needed)
+            if(field === 'll_bill_amount') newState.dl_bill_amount = value;
+            if(field === 'll_paid_amount') newState.dl_paid_amount = value;
+            if(field === 'dl_bill_amount') newState.ll_bill_amount = value;
+            if(field === 'dl_paid_amount') newState.ll_paid_amount = value;
+            return newState;
+        });
+    };
 
     const categoryOptions = ["MCWG", "MCWOG", "LMV", "TRANS", "ERIK", "OTHERS"];
     const llStatuses = ["Form Complete", "LL Approved", "Test Pending", "Test Failed"];
@@ -35,7 +53,6 @@ export default function LicenseFlow() {
             if(search) params.append('search', search);
             if(dateRange.from) params.append('from_date', dateRange.from);
             if(dateRange.to) params.append('to_date', dateRange.to);
-
             const res = await api.get(`/api/licenses?${params.toString()}`);
             setList(res.data);
         } catch (error) { console.error(error); }
@@ -51,18 +68,29 @@ export default function LicenseFlow() {
 
     const handleStep1Submit = (e) => {
         e.preventDefault();
+        // Sync before moving
+        setForm(prev => ({
+            ...prev,
+            dl_bill_amount: prev.ll_bill_amount,
+            dl_paid_amount: prev.ll_paid_amount
+        }));
+
         if (enterDL) setStep(2); else finalSubmit();
     };
 
     const finalSubmit = async () => {
         try {
             const payload = { ...form };
+            // Ensure consistency one last time
+            payload.dl_bill_amount = payload.ll_bill_amount;
+            payload.dl_paid_amount = payload.ll_paid_amount;
+
             if(editingId) {
                 await api.put(`/api/licenses/${editingId}`, payload);
-                toast.success("License Updated");
+                toast.success("Updated");
             } else {
                 await api.post('/api/licenses', payload);
-                toast.success("License Added");
+                toast.success("Saved");
             }
             setShowModal(false);
             fetchLicenses();
@@ -71,7 +99,15 @@ export default function LicenseFlow() {
 
     const openEdit = (item) => {
         setEditingId(item.id);
-        setForm({ ...item, categories: item.categories ? item.categories.split(',') : [] });
+        setForm({
+            ...item,
+            categories: item.categories ? item.categories.split(',') : [],
+            // Ensure strings
+            ll_bill_amount: item.ll_bill_amount || "",
+            ll_paid_amount: item.ll_paid_amount || "",
+            dl_bill_amount: item.ll_bill_amount || "", // Sync Load
+            dl_paid_amount: item.ll_paid_amount || ""  // Sync Load
+        });
         setStep(1);
         setEnterDL(!!item.dl_number);
         setShowModal(true);
@@ -87,22 +123,20 @@ export default function LicenseFlow() {
         setForm({
             applicant_name: "", dob: "", mobile_number: "", application_no: "", address: "",
             ll_number: "", categories: [], ll_valid_from: "", ll_valid_upto: "", ll_status: "Form Complete",
-            dl_status: "", dl_app_no: "", dl_number: "", dl_valid_from: "", dl_valid_upto: ""
+            ll_bill_amount: "", ll_paid_amount: "",
+            dl_status: "", dl_app_no: "", dl_number: "", dl_valid_from: "", dl_valid_upto: "",
+            dl_bill_amount: "", dl_paid_amount: ""
         });
         setShowModal(true);
     };
 
-    // Helper for Validity Column
     const formatValidity = (from, to) => {
         if (!from && !to) return '-';
-        return (
-            <div style={{fontSize: '11px', lineHeight: '1.2'}}>
-                <div>{from ? new Date(from).toLocaleDateString('en-GB') : 'N/A'}</div>
-                <div className="text-muted fw-bold">to</div>
-                <div>{to ? new Date(to).toLocaleDateString('en-GB') : 'N/A'}</div>
-            </div>
-        );
+        return <div style={{fontSize: '11px', lineHeight: '1.2'}}><div>{from}</div><div className="text-muted fw-bold">to</div><div>{to}</div></div>;
     };
+
+    // Pending Calculation (Shared)
+    const pendingDue = (Number(form.ll_bill_amount) || 0) - (Number(form.ll_paid_amount) || 0);
 
     return (
         <div className="bg-light min-vh-100">
@@ -119,18 +153,9 @@ export default function LicenseFlow() {
                 <div className="card border-0 shadow-sm mb-4">
                     <div className="card-body p-3">
                         <div className="row g-2 align-items-end">
-                            <div className="col-md-6">
-                                <label className="small fw-bold text-muted">Search</label>
-                                <input type="text" className="form-control" placeholder="Name, Mobile, App No, LL/DL No..." value={search} onChange={e=>setSearch(e.target.value)} />
-                            </div>
-                            <div className="col-6 col-md-3">
-                                <label className="small fw-bold text-muted">From (Entry Date)</label>
-                                <input type="date" className="form-control" value={dateRange.from} onChange={e=>setDateRange({...dateRange, from: e.target.value})} />
-                            </div>
-                            <div className="col-6 col-md-3">
-                                <label className="small fw-bold text-muted">To</label>
-                                <input type="date" className="form-control" value={dateRange.to} onChange={e=>setDateRange({...dateRange, to: e.target.value})} />
-                            </div>
+                            <div className="col-md-6"><label className="small fw-bold text-muted">Search</label><input type="text" className="form-control" placeholder="Name, Mobile, App No..." value={search} onChange={e=>setSearch(e.target.value)} /></div>
+                            <div className="col-6 col-md-3"><label className="small fw-bold text-muted">From</label><input type="date" className="form-control" value={dateRange.from} onChange={e=>setDateRange({...dateRange, from: e.target.value})} /></div>
+                            <div className="col-6 col-md-3"><label className="small fw-bold text-muted">To</label><input type="date" className="form-control" value={dateRange.to} onChange={e=>setDateRange({...dateRange, to: e.target.value})} /></div>
                         </div>
                     </div>
                 </div>
@@ -140,37 +165,18 @@ export default function LicenseFlow() {
                     <div className="table-responsive">
                         <table className="table table-hover mb-0 align-middle text-nowrap">
                             <thead className="table-light text-center">
-                                <tr>
-                                    <th>#</th>
-                                    <th className="text-start">Applicant</th>
-                                    <th>Status (LL)</th>
-                                    <th>Status (DL)</th>
-                                    <th>Category</th>
-                                    <th>LL Validity</th>
-                                    <th>DL Validity</th>
-                                    <th>Action</th>
-                                </tr>
+                                <tr><th>#</th><th className="text-start">Applicant</th><th>LL Status</th><th>DL Status</th><th>LL Validity</th><th>DL Validity</th><th>Action</th></tr>
                             </thead>
                             <tbody className="text-center">
                                 {list.map((item, index) => (
                                     <tr key={item.id}>
                                         <td className="text-muted fw-bold">{index + 1}</td>
-                                        <td className="text-start">
-                                            <div className="fw-bold text-primary">{item.applicant_name}</div>
-                                            <small className="text-muted"><i className="bi bi-phone"></i> {item.mobile_number}</small>
-                                        </td>
+                                        <td className="text-start"><div className="fw-bold text-primary">{item.applicant_name}</div><small className="text-muted"><i className="bi bi-phone"></i> {item.mobile_number}</small></td>
                                         <td><span className="badge bg-info text-dark">{item.ll_status}</span></td>
                                         <td>{item.dl_status ? <span className="badge bg-success">{item.dl_status}</span> : <span className="text-muted">-</span>}</td>
-                                        <td><small className="fw-bold text-secondary">{item.categories || '-'}</small></td>
-
-                                        {/* Merged Columns for Validity */}
                                         <td>{formatValidity(item.ll_valid_from, item.ll_valid_upto)}</td>
                                         <td>{formatValidity(item.dl_valid_from, item.dl_valid_upto)}</td>
-
-                                        <td>
-                                            <button onClick={()=>openEdit(item)} className="btn btn-sm btn-link text-primary"><i className="bi bi-pencil-square"></i></button>
-                                            <button onClick={()=>handleDelete(item.id)} className="btn btn-sm btn-link text-danger"><i className="bi bi-trash"></i></button>
-                                        </td>
+                                        <td><button onClick={()=>openEdit(item)} className="btn btn-sm btn-link text-primary"><i className="bi bi-pencil-square"></i></button>{canEdit && <button onClick={()=>handleDelete(item.id)} className="btn btn-sm btn-link text-danger"><i className="bi bi-trash"></i></button>}</td>
                                     </tr>
                                 ))}
                                 {list.length === 0 && <tr><td colSpan="8" className="text-center py-5 text-muted">No records found.</td></tr>}
@@ -180,7 +186,7 @@ export default function LicenseFlow() {
                 </div>
             </div>
 
-            {/* MODAL (Same logic as before) */}
+            {/* MODAL */}
             {showModal && (
                 <div className="modal d-block" style={{backgroundColor:'rgba(0,0,0,0.5)'}}>
                     <div className="modal-dialog modal-lg modal-dialog-centered">
@@ -190,15 +196,31 @@ export default function LicenseFlow() {
                                 <button className="btn-close btn-close-white" onClick={()=>setShowModal(false)}></button>
                             </div>
                             <div className="modal-body p-4">
+
+                                {/* STEP 1 */}
                                 {step === 1 && (
                                     <form onSubmit={handleStep1Submit}>
                                         <div className="row g-3">
                                             <div className="col-md-6"><label className="small fw-bold">Name *</label><input type="text" className="form-control" value={form.applicant_name} onChange={e=>setForm({...form, applicant_name:e.target.value.toUpperCase()})} required /></div>
                                             <div className="col-md-3"><label className="small fw-bold">DOB *</label><input type="date" className="form-control" value={form.dob} onChange={e=>setForm({...form, dob:e.target.value})} required /></div>
                                             <div className="col-md-3"><label className="small fw-bold">Mobile *</label><input type="number" className="form-control" value={form.mobile_number} onChange={e=>setForm({...form, mobile_number:e.target.value})} required /></div>
+
                                             <div className="col-md-4"><label className="small fw-bold">App No</label><input type="text" className="form-control" value={form.application_no} onChange={e=>setForm({...form, application_no:e.target.value.toUpperCase()})} /></div>
                                             <div className="col-md-4"><label className="small fw-bold">LL No</label><input type="text" className="form-control" value={form.ll_number} onChange={e=>setForm({...form, ll_number:e.target.value.toUpperCase()})} /></div>
                                             <div className="col-md-4"><label className="small fw-bold">Status</label><select className="form-select" value={form.ll_status} onChange={e=>setForm({...form, ll_status:e.target.value})}>{llStatuses.map(s=><option key={s} value={s}>{s}</option>)}</select></div>
+
+                                            {/* SHARED PAYMENTS */}
+                                            <div className="col-12 mt-3">
+                                                <div className="card bg-light border-0 p-3">
+                                                    <h6 className="fw-bold text-secondary mb-2"><i className="bi bi-cash-coin"></i> Fees & Payment (Shared)</h6>
+                                                    <div className="row g-2">
+                                                        <div className="col-md-4"><label className="small">Asked Amount</label><input type="number" className="form-control" placeholder="0" value={form.ll_bill_amount} onChange={e=>handleFinanceChange('ll_bill_amount', e.target.value)} /></div>
+                                                        <div className="col-md-4"><label className="small text-success">Paid Amount</label><input type="number" className="form-control border-success" placeholder="0" value={form.ll_paid_amount} onChange={e=>handleFinanceChange('ll_paid_amount', e.target.value)} /></div>
+                                                        <div className="col-md-4"><label className="small text-danger">Pending Due</label><input type="text" className="form-control border-danger bg-white fw-bold text-danger" value={pendingDue} disabled /></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+
                                             <div className="col-12"><label className="small fw-bold">Address</label><input type="text" className="form-control" value={form.address} onChange={e=>setForm({...form, address:e.target.value.toUpperCase()})} /></div>
                                             <div className="col-12"><label className="small fw-bold d-block mb-2">Category</label><div className="d-flex flex-wrap gap-3">{categoryOptions.map(cat => (<div className="form-check" key={cat}><input className="form-check-input" type="checkbox" value={cat} checked={form.categories.includes(cat)} onChange={handleCategoryChange} /><label className="form-check-label small">{cat}</label></div>))}</div></div>
                                             <div className="col-md-6"><label className="small fw-bold">LL Valid From</label><input type="date" className="form-control" value={form.ll_valid_from} onChange={e=>setForm({...form, ll_valid_from:e.target.value})} /></div>
@@ -208,6 +230,8 @@ export default function LicenseFlow() {
                                         <div className="mt-3 text-end"><button type="submit" className={`btn fw-bold px-4 ${enterDL ? 'btn-primary' : 'btn-success'}`}>{enterDL ? 'Next ➝' : 'Save Entry'}</button></div>
                                     </form>
                                 )}
+
+                                {/* STEP 2 */}
                                 {step === 2 && (
                                     <div>
                                         <div className="alert alert-info py-2 small mb-3"><strong>Applicant:</strong> {form.applicant_name}</div>
@@ -215,6 +239,19 @@ export default function LicenseFlow() {
                                             <div className="col-md-6"><label className="small fw-bold">DL Status</label><select className="form-select" value={form.dl_status} onChange={e=>setForm({...form, dl_status:e.target.value})}><option value="">Select...</option>{dlStatuses.map(s=><option key={s} value={s}>{s}</option>)}</select></div>
                                             <div className="col-md-6"><label className="small fw-bold">DL App No</label><input type="text" className="form-control" value={form.dl_app_no} onChange={e=>setForm({...form, dl_app_no:e.target.value.toUpperCase()})} /></div>
                                             <div className="col-md-12"><label className="small fw-bold">DL Number</label><input type="text" className="form-control fw-bold" value={form.dl_number} onChange={e=>setForm({...form, dl_number:e.target.value.toUpperCase()})} /></div>
+
+                                            {/* SHARED PAYMENTS (SAME AS STEP 1) */}
+                                            <div className="col-12 mt-1">
+                                                <div className="card bg-light border-0 p-3">
+                                                    <h6 className="fw-bold text-secondary mb-2"><i className="bi bi-credit-card"></i> Fees & Payment (Shared)</h6>
+                                                    <div className="row g-2">
+                                                        <div className="col-md-4"><label className="small">Asked Amount</label><input type="number" className="form-control" placeholder="0" value={form.ll_bill_amount} onChange={e=>handleFinanceChange('ll_bill_amount', e.target.value)} /></div>
+                                                        <div className="col-md-4"><label className="small text-success">Paid Amount</label><input type="number" className="form-control border-success" placeholder="0" value={form.ll_paid_amount} onChange={e=>handleFinanceChange('ll_paid_amount', e.target.value)} /></div>
+                                                        <div className="col-md-4"><label className="small text-danger">Pending Due</label><input type="text" className="form-control border-danger bg-white fw-bold text-danger" value={pendingDue} disabled /></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+
                                             <div className="col-md-6"><label className="small fw-bold">DL Valid From</label><input type="date" className="form-control" value={form.dl_valid_from} onChange={e=>setForm({...form, dl_valid_from:e.target.value})} /></div>
                                             <div className="col-md-6"><label className="small fw-bold">DL Valid Upto</label><input type="date" className="form-control" value={form.dl_valid_upto} onChange={e=>setForm({...form, dl_valid_upto:e.target.value})} /></div>
                                         </div>
