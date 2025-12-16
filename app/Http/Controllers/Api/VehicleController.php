@@ -7,97 +7,75 @@ use Illuminate\Http\Request;
 use App\Models\Vehicle;
 use App\Models\Citizen;
 use Illuminate\Support\Facades\Validator;
-use Illuminate\Support\Facades\Auth;
 
 class VehicleController extends Controller
 {
-    // Helper to check ownership
-    private function checkOwnership($vehicle)
+    // Helper to find vehicle belonging to Team (Boss + Staff)
+    private function getVehicle($id, $user)
     {
-        // Ensure the vehicle belongs to a citizen who belongs to the logged-in user
-        return $vehicle->citizen && $vehicle->citizen->user_id === Auth::id();
+        $ownerId = $user->parent_id ?? $user->id; // Get Boss ID
+        return Vehicle::where('id', $id)->whereHas('citizen', fn($q) => $q->where('user_id', $ownerId))->first();
     }
 
+    // Store (Allowed for Staff)
     public function store(Request $request)
     {
         $user = $request->user();
+        $ownerId = $user->parent_id ?? $user->id; // Determine Owner
 
-        // 1. Security: Ensure the Citizen belongs to this User
-        $isOwner = Citizen::where('id', $request->citizen_id)
-            ->where('user_id', $user->id)
+        // Verify Citizen belongs to Boss
+        $isOwner = Citizen::where('id', $request->citizen_id)->where('user_id', $ownerId)->exists();
+        if (!$isOwner) return response()->json(['message' => 'Unauthorized action.'], 403);
+
+        // Check Duplicate
+        $exists = Vehicle::where('registration_no', strtoupper($request->registration_no))
+            ->whereHas('citizen', fn($q) => $q->where('user_id', $ownerId))
             ->exists();
 
-        if (!$isOwner) {
-            return response()->json(['message' => 'Unauthorized action.'], 403);
-        }
+        if ($exists) return response()->json(['errors' => ['registration_no' => ['Vehicle already exists.']]], 422);
 
-        // 2. Check duplicate within user scope
-        $exists = Vehicle::where('registration_no', $request->registration_no)
-            ->whereHas('citizen', function ($query) use ($user) {
-                $query->where('user_id', $user->id);
-            })
-            ->exists();
-
-        if ($exists) {
-            return response()->json([
-                'errors' => ['registration_no' => ['You have already added this Vehicle Number.']]
-            ], 422);
-        }
-
-        $validator = Validator::make($request->all(), [
-            'citizen_id' => 'required|exists:citizens,id',
-            'registration_no' => 'required|string',
-            'type' => 'nullable|string',
-            'make_model' => 'nullable|string',
-            'chassis_no' => 'nullable|string',
-            'engine_no' => 'nullable|string',
+        $vehicle = Vehicle::create([
+            'citizen_id' => $request->citizen_id,
+            'registration_no' => strtoupper($request->registration_no),
+            'type' => $request->type,
+            'make_model' => strtoupper($request->make_model),
+            'chassis_no' => strtoupper($request->chassis_no),
+            'engine_no' => strtoupper($request->engine_no),
         ]);
 
-        if ($validator->fails())
-            return response()->json(['errors' => $validator->errors()], 422);
-
-        $vehicle = Vehicle::create($request->all());
-
-        return response()->json(['message' => 'Vehicle Added Successfully', 'vehicle' => $vehicle]);
+        return response()->json(['message' => 'Vehicle Added', 'vehicle' => $vehicle]);
     }
 
-    // --- UPDATE VEHICLE ---
+    // Update (Allowed for Staff)
     public function update(Request $request, $id)
     {
-        // Use 'with' to load citizen relationship to prevent null errors
-        $vehicle = Vehicle::with('citizen')->findOrFail($id);
+        $vehicle = $this->getVehicle($id, $request->user());
+        if (!$vehicle) return response()->json(['message' => 'Unauthorized'], 403);
 
-        if (!$this->checkOwnership($vehicle)) {
-            return response()->json(['message' => 'Unauthorized'], 403);
-        }
-
-        $validator = Validator::make($request->all(), [
-            'registration_no' => 'required|string',
-            'type' => 'nullable|string',
-            'make_model' => 'nullable|string',
-            'chassis_no' => 'nullable|string',
-            'engine_no' => 'nullable|string',
+        $vehicle->update([
+            'registration_no' => strtoupper($request->registration_no),
+            'type' => $request->type,
+            'make_model' => strtoupper($request->make_model),
+            'chassis_no' => strtoupper($request->chassis_no),
+            'engine_no' => strtoupper($request->engine_no),
         ]);
 
-        if ($validator->fails())
-            return response()->json(['errors' => $validator->errors()], 422);
-
-        $vehicle->update($request->all());
-
-        return response()->json(['message' => 'Vehicle Updated Successfully']);
+        return response()->json(['message' => 'Vehicle Updated']);
     }
 
-    // --- DELETE VEHICLE ---
-    public function destroy($id)
+    // Delete (ALLOWED for Staff)
+    public function destroy(Request $request, $id)
     {
-        $vehicle = Vehicle::with('citizen')->findOrFail($id);
+        // NO PERMISSION CHECK HERE -> Staff CAN delete
 
-        if (!$this->checkOwnership($vehicle)) {
+        $vehicle = $this->getVehicle($id, $request->user());
+
+        if (!$vehicle) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
         $vehicle->delete();
 
-        return response()->json(['message' => 'Vehicle Deleted Successfully']);
+        return response()->json(['message' => 'Vehicle Deleted']);
     }
 }

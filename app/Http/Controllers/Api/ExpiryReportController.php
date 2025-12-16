@@ -15,9 +15,12 @@ class ExpiryReportController extends Controller
 {
     public function index(Request $request)
     {
-        // ... (Your existing index logic) ...
-        // (Keep the code you already have for index)
-        $userId = $request->user()->id;
+        // --- 1. Get Team IDs (Boss + Staff) ---
+        $user = $request->user();
+        $bossId = $user->parent_id ?? $user->id;
+        $teamIds = \App\Models\User::where('id', $bossId)->orWhere('parent_id', $bossId)->pluck('id');
+
+        // --- 2. Filter Inputs ---
         $citizenId = $request->citizen_id;
         $name = $request->owner_name;
         $vehicleNo = $request->vehicle_no;
@@ -25,22 +28,24 @@ class ExpiryReportController extends Controller
         $dateFrom = $request->expiry_from;
         $dateUpto = $request->expiry_upto;
 
-        $buildQuery = function ($table, $typeLabel, $dateCol) use ($userId) {
+        $buildQuery = function ($table, $typeLabel, $dateCol) use ($teamIds) {
             return DB::table($table)
                 ->join('vehicles', "$table.vehicle_id", '=', 'vehicles.id')
                 ->join('citizens', 'vehicles.citizen_id', '=', 'citizens.id')
-                ->where('citizens.user_id', $userId)
+                ->whereIn('citizens.user_id', $teamIds) // <--- CHANGED TO whereIn
                 ->select(
                     'citizens.id as citizen_id',
                     'citizens.name as owner_name',
                     'citizens.mobile_number',
                     'vehicles.registration_no',
-                    'vehicles.id as vehicle_id', // <--- Added
-                    "$table.id as doc_id",       // <--- Added (Crucial for updates)
+                    'vehicles.id as vehicle_id',
+                    "$table.id as doc_id",
                     DB::raw("'$typeLabel' as doc_type"),
                     "$table.$dateCol as expiry_date"
                 );
         };
+
+        // ... (rest of the query logic remains same) ...
 
         $queries = [];
         if (!$docType || $docType == 'Tax')
@@ -82,7 +87,6 @@ class ExpiryReportController extends Controller
         $result->orderBy('expiry_date', 'asc');
 
         return response()->json($result->paginate(15));
-
     }
 
     // --- MANUAL SEND FUNCTION ---
