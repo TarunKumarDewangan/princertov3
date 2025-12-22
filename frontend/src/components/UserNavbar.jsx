@@ -101,6 +101,9 @@ export default function UserNavbar() {
                                 <li className="nav-item"><Link className={`nav-link ${isActive('/backup')}`} to="/backup" onClick={()=>setIsOpen(false)}>Backup</Link></li>
                                 <li className="nav-item"><Link className={`nav-link ${isActive('/bulk-import')}`} to="/bulk-import" onClick={()=>setIsOpen(false)}>Bulk Import</Link></li>
                                 <li className="nav-item"><Link className={`nav-link ${isActive('/manage-staff')}`} to="/manage-staff" onClick={()=>setIsOpen(false)}>Manage Staff</Link></li>
+                                <li className="nav-item">
+    <Link className={`nav-link ${isActive('/quick-entry')}`} to="/quick-entry" onClick={()=>setIsOpen(false)}>Quick Entry</Link>
+</li>
                             </>
                         )}
                     </ul>
