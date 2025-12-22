@@ -46,14 +46,18 @@ class QuickEntryController extends Controller
             $vehicle = Vehicle::where('registration_no', $regNo)->first();
 
             if ($vehicle) {
-                // Vehicle Exists: Update the owner to this Citizen
-                $vehicle->update(['citizen_id' => $citizen->id]);
+                // Vehicle Exists: Update owner & type
+                $vehicle->update([
+                    'citizen_id' => $citizen->id,
+                    'type' => $request->type ?? $vehicle->type // Update type if provided
+                ]);
             } else {
                 // Create New Vehicle
                 $vehicle = Vehicle::create([
                     'citizen_id' => $citizen->id,
                     'registration_no' => $regNo,
-                    'type' => 'N/A'
+                    'type' => $request->type ?? 'N/A', // Save type
+                    'make_model' => null
                 ]);
             }
 

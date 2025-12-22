@@ -9,10 +9,10 @@ export default function QuickEntry() {
         name: "",
         mobile_number: "",
         registration_no: "",
+        type: "", // <--- Added this
         valid_from: "",
         valid_until: ""
     });
-
     const handleSubmit = async (e) => {
         e.preventDefault();
         setLoading(true);
@@ -54,10 +54,38 @@ export default function QuickEntry() {
                             </div>
 
                             {/* Vehicle Details */}
+
                             <h6 className="text-primary fw-bold mb-3 mt-4">Vehicle Details</h6>
-                            <div className="mb-3">
-                                <label className="form-label small fw-bold">Vehicle Reg No *</label>
-                                <input type="text" className="form-control fw-bold fs-5 text-uppercase" placeholder="CG04..." value={form.registration_no} onChange={e => setForm({...form, registration_no: e.target.value.toUpperCase()})} required />
+                            <div className="row g-3 mb-3">
+                                <div className="col-md-8">
+                                    <label className="form-label small fw-bold">Vehicle Reg No *</label>
+                                    <input
+                                        type="text"
+                                        className="form-control fw-bold fs-5 text-uppercase"
+                                        placeholder="CG04..."
+                                        value={form.registration_no}
+                                        onChange={e => setForm({...form, registration_no: e.target.value.toUpperCase()})}
+                                        required
+                                    />
+                                </div>
+                                <div className="col-md-4">
+                                    <label className="form-label small fw-bold">Vehicle Type</label>
+                                    <select
+                                        className="form-select"
+                                        value={form.type}
+                                        onChange={e => setForm({...form, type: e.target.value})}
+                                    >
+                                        <option value="">Select...</option>
+                                        <option value="Motorcycle">Motorcycle</option>
+                                        <option value="Car">Car</option>
+                                        <option value="LMV">LMV</option>
+                                        <option value="LGV">LGV</option>
+                                        <option value="MGV">MGV</option>
+                                        <option value="HGV">HGV</option>
+                                        <option value="TRUCK">TRUCK</option>
+                                        <option value="OTHERS">OTHERS</option>
+                                    </select>
+                                </div>
                             </div>
 
                             {/* PUCC Dates */}
