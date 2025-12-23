@@ -92,6 +92,9 @@ export default function UserNavbar() {
                         <li className="nav-item"><Link className={`nav-link ${isActive('/reports/expiry')}`} to="/reports/expiry" onClick={()=>setIsOpen(false)}>Expiry Reports</Link></li>
                         <li className="nav-item"><Link className={`nav-link ${isActive('/cash-flow')}`} to="/cash-flow" onClick={()=>setIsOpen(false)}>Cash Flow</Link></li>
                         <li className="nav-item"><Link className={`nav-link ${isActive('/license-flow')}`} to="/license-flow" onClick={()=>setIsOpen(false)}>LL/DL Flow</Link></li>
+                         <li className="nav-item">
+    <Link className={`nav-link ${isActive('/quick-entry')}`} to="/quick-entry" onClick={()=>setIsOpen(false)}>Quick Entry</Link>
+</li>
 
                         {/* Admin Only Links (Level 1) */}
                         {isLevel1 && (
@@ -101,9 +104,7 @@ export default function UserNavbar() {
                                 <li className="nav-item"><Link className={`nav-link ${isActive('/backup')}`} to="/backup" onClick={()=>setIsOpen(false)}>Backup</Link></li>
                                 <li className="nav-item"><Link className={`nav-link ${isActive('/bulk-import')}`} to="/bulk-import" onClick={()=>setIsOpen(false)}>Bulk Import</Link></li>
                                 <li className="nav-item"><Link className={`nav-link ${isActive('/manage-staff')}`} to="/manage-staff" onClick={()=>setIsOpen(false)}>Manage Staff</Link></li>
-                                <li className="nav-item">
-    <Link className={`nav-link ${isActive('/quick-entry')}`} to="/quick-entry" onClick={()=>setIsOpen(false)}>Quick Entry</Link>
-</li>
+
                             </>
                         )}
                     </ul>
