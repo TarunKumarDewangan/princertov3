@@ -21,7 +21,7 @@ class LicenseController extends Controller
         $teamIds = $this->getTeamIds($request->user());
         $query = DB::table('licenses')->whereIn('user_id', $teamIds);
 
-        // Search
+        // 1. Text Search
         if ($request->search) {
             $k = $request->search;
             $query->where(function ($q) use ($k) {
@@ -33,12 +33,23 @@ class LicenseController extends Controller
             });
         }
 
-        // Date Filter
+        // 2. Exact DOB Search
+        if ($request->dob) {
+            $query->whereDate('dob', $request->dob);
+        }
+
+        // 3. Expiry Date Range Search (Checks LL OR DL Expiry)
         if ($request->from_date) {
-            $query->whereDate('created_at', '>=', $request->from_date);
+            $query->where(function ($q) use ($request) {
+                $q->whereDate('ll_valid_upto', '>=', $request->from_date)
+                    ->orWhereDate('dl_valid_upto', '>=', $request->from_date);
+            });
         }
         if ($request->to_date) {
-            $query->whereDate('created_at', '<=', $request->to_date);
+            $query->where(function ($q) use ($request) {
+                $q->whereDate('ll_valid_upto', '<=', $request->to_date)
+                    ->orWhereDate('dl_valid_upto', '<=', $request->to_date);
+            });
         }
 
         return response()->json($query->latest()->get());
