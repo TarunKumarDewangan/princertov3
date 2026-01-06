@@ -90,7 +90,7 @@ export default function UserNavbar() {
                         <li className="nav-item"><Link className={`nav-link ${isActive('/dashboard')}`} to="/dashboard" onClick={()=>setIsOpen(false)}>Dashboard</Link></li>
                         <li className="nav-item"><Link className={`nav-link ${isActive('/citizens')}`} to="/citizens" onClick={()=>setIsOpen(false)}>Citizens</Link></li>
                         <li className="nav-item"><Link className={`nav-link ${isActive('/reports/expiry')}`} to="/reports/expiry" onClick={()=>setIsOpen(false)}>Expiry Reports</Link></li>
-                        <li className="nav-item"><Link className={`nav-link ${isActive('/cash-flow')}`} to="/cash-flow" onClick={()=>setIsOpen(false)}>Cash Flow</Link></li>
+                        <li className="nav-item"><Link className={`nav-link ${isActive('/cash-flow')}`} to="/cash-flow" onClick={()=>setIsOpen(false)}>Cash Book</Link></li>
                         <li className="nav-item"><Link className={`nav-link ${isActive('/license-flow')}`} to="/license-flow" onClick={()=>setIsOpen(false)}>LL/DL Flow</Link></li>
                          <li className="nav-item">
     <Link className={`nav-link ${isActive('/quick-entry')}`} to="/quick-entry" onClick={()=>setIsOpen(false)}>Quick Entry</Link>
@@ -99,7 +99,7 @@ export default function UserNavbar() {
                         {/* Admin Only Links (Level 1) */}
                         {isLevel1 && (
                             <>
-                                <li className="nav-item"><Link className={`nav-link ${isActive('/work-book')}`} to="/work-book" onClick={()=>setIsOpen(false)}>Work Book</Link></li>
+                                <li className="nav-item"><Link className={`nav-link ${isActive('/work-book')}`} to="/work-book" onClick={()=>setIsOpen(false)}>OK Credit</Link></li>
                                 <li className="nav-item"><Link className={`nav-link ${isActive('/settings')}`} to="/settings" onClick={()=>setIsOpen(false)}>Settings</Link></li>
                                 <li className="nav-item"><Link className={`nav-link ${isActive('/backup')}`} to="/backup" onClick={()=>setIsOpen(false)}>Backup</Link></li>
                                 <li className="nav-item"><Link className={`nav-link ${isActive('/bulk-import')}`} to="/bulk-import" onClick={()=>setIsOpen(false)}>Bulk Import</Link></li>

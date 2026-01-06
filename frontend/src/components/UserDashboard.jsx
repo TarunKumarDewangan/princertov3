@@ -59,7 +59,7 @@ export default function UserDashboard() {
                     <div className="col-12 col-md-6 col-lg-4">
                         <div className="card border-0 shadow-sm h-100 p-4 text-center">
                             <div className="mb-3"><i className="bi bi-cash-coin fs-1 text-warning d-block"></i></div>
-                            <h5 className="card-title fw-bold">Cash Flow</h5>
+                            <h5 className="card-title fw-bold">Cash Book</h5>
                             <p className="card-text text-muted small mb-4">Daily collections & payment ledger.</p>
                             <Link to="/cash-flow" className="btn btn-warning w-100 mt-auto fw-bold text-dark">View Ledger</Link>
                         </div>
@@ -70,7 +70,7 @@ export default function UserDashboard() {
                         <div className="col-12 col-md-6 col-lg-4">
                             <div className="card border-0 shadow-sm h-100 p-4 text-center">
                                 <div className="mb-3"><i className="bi bi-briefcase-fill fs-1 text-info d-block"></i></div>
-                                <h5 className="card-title fw-bold">Work Book</h5>
+                                <h5 className="card-title fw-bold">OK Credit</h5>
                                 <p className="card-text text-muted small mb-4">Manage Client Jobs & Dues.</p>
                                 <Link to="/work-book" className="btn btn-info w-100 mt-auto fw-bold text-white">Open Work Register</Link>
                             </div>
