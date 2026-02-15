@@ -35,7 +35,7 @@ export default function CashFlow() {
     const [isEditingAccount, setIsEditingAccount] = useState(false);
     const [txnType, setTxnType] = useState("IN");
 
-    // Helper to get local ISO string for input
+    // Helper to get local ISO string for input (Only used for Admin)
     const getCurrentLocalTime = () => {
         const now = new Date();
         now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
@@ -71,13 +71,11 @@ export default function CashFlow() {
     const currentStats = getStats();
 
     // --- RUNNING BALANCE CALCULATION ---
-    // We memoize this to avoid recalculating on every render
     const entriesWithBalance = useMemo(() => {
         if (loading || data.entries.length === 0) return [];
 
         // If filtered (Search), we can't accurately calculate running balance
         // because we might be missing the "previous" entries.
-        // So we only do this for the main list (unfiltered).
         if (isFiltered) {
             return data.entries;
         }
@@ -105,10 +103,9 @@ export default function CashFlow() {
 
     }, [data.entries, data.stats.all.balance, isFiltered, loading]);
 
-
     // Table Display Logic
     const getDisplayEntries = () => {
-        const sourceData = entriesWithBalance; // Use our calculated list
+        const sourceData = entriesWithBalance;
 
         if (isFiltered) return sourceData;
         if (viewMode === 'daily') {
@@ -338,18 +335,63 @@ export default function CashFlow() {
 
             {/* MODALS */}
             {showAccountModal && (<div className="modal d-block" style={{backgroundColor:'rgba(0,0,0,0.5)'}}><div className="modal-dialog modal-dialog-centered modal-lg"><div className="modal-content border-0 shadow-lg"><div className="modal-header"><h5 className="modal-title fw-bold">Manage Account Heads</h5><button className="btn-close" onClick={()=>setShowAccountModal(false)}></button></div><div className="modal-body p-4"><form onSubmit={handleSaveAccount} className="row g-2 align-items-end mb-4 border-bottom pb-4"><div className="col-md-5"><label className="form-label fw-bold small">Account Name *</label><input type="text" className="form-control" placeholder="e.g. RENT" value={accountForm.name} onChange={e => setAccountForm({...accountForm, name: e.target.value.toUpperCase()})} required /></div><div className="col-md-4"><label className="form-label fw-bold small">Mobile (Optional)</label><input type="number" className="form-control" placeholder="10-digit mobile" value={accountForm.mobile} onChange={e => setAccountForm({...accountForm, mobile: e.target.value})} /></div><div className="col-md-3"><button type="submit" className={`btn w-100 fw-bold ${isEditingAccount ? 'btn-warning' : 'btn-primary'}`}>{isEditingAccount ? 'Update' : 'Create'}</button></div>{isEditingAccount && <div className="col-12 text-end"><button type="button" onClick={() => { setIsEditingAccount(false); setAccountForm({id:null, name:"", mobile:""}) }} className="btn btn-link btn-sm text-muted">Cancel Edit</button></div>}</form><h6 className="fw-bold text-muted mb-3">Existing Accounts</h6><div className="table-responsive" style={{maxHeight: '300px', overflowY: 'auto'}}><table className="table table-sm table-hover align-middle"><thead className="table-light sticky-top"><tr><th>Name</th><th>Mobile</th><th className="text-end">Actions</th></tr></thead><tbody>{data.accounts.map(acc => (<tr key={acc.id}><td className="fw-bold">{acc.name}</td><td className="text-muted">{acc.mobile || '-'}</td><td className="text-end"><button onClick={() => handleEditAccountClick(acc)} className="btn btn-sm btn-link text-primary me-2"><i className="bi bi-pencil-square"></i></button><button onClick={() => handleDeleteAccount(acc.id)} className="btn btn-sm btn-link text-danger"><i className="bi bi-trash"></i></button></td></tr>))}</tbody></table></div></div></div></div></div>)}
-            {/* CASH ENTRY MODAL */}
+
+            {/* CASH ENTRY MODAL - SECURED */}
             {showEntryModal && (
-                <div className="modal d-block" style={{backgroundColor:'rgba(0,0,0,0.5)'}}><div className="modal-dialog modal-dialog-centered"><div className="modal-content border-0 shadow-lg"><div className="modal-header border-bottom-0 pb-0"><h5 className="modal-title fw-bold">Cash Transaction</h5><button className="btn-close" onClick={()=>setShowEntryModal(false)}></button></div><div className="modal-body p-4"><form onSubmit={handleEntry}><div className="d-flex gap-2 mb-4 p-1 bg-light rounded-pill border"><button type="button" className={`btn w-50 rounded-pill fw-bold ${txnType === 'IN' ? 'btn-success shadow-sm' : 'text-muted'}`} onClick={() => setTxnType("IN")}>CASH IN</button><button type="button" className={`btn w-50 rounded-pill fw-bold ${txnType === 'OUT' ? 'btn-danger shadow-sm' : 'text-muted'}`} onClick={() => setTxnType("OUT")}>CASH OUT</button></div><div className="mb-3"><label className="form-label small fw-bold text-muted">Select Account (Optional)</label><select className="form-select" value={entryForm.ledger_account_id} onChange={e => setEntryForm({...entryForm, ledger_account_id: e.target.value})}><option value="">-- General / None --</option>{data.accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name} {acc.mobile ? `(${acc.mobile})` : ''}</option>)}</select></div><div className="row mb-3"><div className="col-6"><label className="form-label small fw-bold text-muted">Amount (₹)</label><input type="number" className="form-control fw-bold fs-5" placeholder="0" value={entryForm.amount} onChange={e => setEntryForm({...entryForm, amount: e.target.value})} required /></div><div className="col-6"><label className="form-label small fw-bold text-muted">Date</label>
-                    <input
-                        type="datetime-local"
-                        className="form-control"
-                        value={entryForm.entry_date}
-                        onChange={e => setEntryForm({...entryForm, entry_date: e.target.value})}
-                        required
-                        disabled={!isLevel1}
-                    />
-                    </div></div><div className="mb-3"><label className="form-label small fw-bold text-muted">Description</label><input type="text" className="form-control" placeholder="NOTES..." value={entryForm.description} onChange={e => setEntryForm({...entryForm, description: e.target.value.toUpperCase()})} /></div><div className="d-grid mt-4"><button type="submit" className={`btn py-2 fw-bold ${txnType === 'IN' ? 'btn-success' : 'btn-danger'}`}>{txnType === 'IN' ? 'Receive Payment' : 'Record Expense'}</button></div></form></div></div></div></div>
+                <div className="modal d-block" style={{backgroundColor:'rgba(0,0,0,0.5)'}}>
+                    <div className="modal-dialog modal-dialog-centered">
+                        <div className="modal-content border-0 shadow-lg">
+                            <div className="modal-header border-bottom-0 pb-0">
+                                <h5 className="modal-title fw-bold">Cash Transaction</h5>
+                                <button className="btn-close" onClick={()=>setShowEntryModal(false)}></button>
+                            </div>
+                            <div className="modal-body p-4">
+                                <form onSubmit={handleEntry}>
+                                    <div className="d-flex gap-2 mb-4 p-1 bg-light rounded-pill border">
+                                        <button type="button" className={`btn w-50 rounded-pill fw-bold ${txnType === 'IN' ? 'btn-success shadow-sm' : 'text-muted'}`} onClick={() => setTxnType("IN")}>CASH IN</button>
+                                        <button type="button" className={`btn w-50 rounded-pill fw-bold ${txnType === 'OUT' ? 'btn-danger shadow-sm' : 'text-muted'}`} onClick={() => setTxnType("OUT")}>CASH OUT</button>
+                                    </div>
+                                    <div className="mb-3">
+                                        <label className="form-label small fw-bold text-muted">Select Account (Optional)</label>
+                                        <select className="form-select" value={entryForm.ledger_account_id} onChange={e => setEntryForm({...entryForm, ledger_account_id: e.target.value})}>
+                                            <option value="">-- General / None --</option>
+                                            {data.accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name} {acc.mobile ? `(${acc.mobile})` : ''}</option>)}
+                                        </select>
+                                    </div>
+                                    <div className="row mb-3">
+                                        <div className="col-6">
+                                            <label className="form-label small fw-bold text-muted">Amount (₹)</label>
+                                            <input type="number" className="form-control fw-bold fs-5" placeholder="0" value={entryForm.amount} onChange={e => setEntryForm({...entryForm, amount: e.target.value})} required />
+                                        </div>
+                                        <div className="col-6">
+                                            <label className="form-label small fw-bold text-muted">Date</label>
+                                            {isLevel1 ? (
+                                                <input
+                                                    type="datetime-local"
+                                                    className="form-control"
+                                                    value={entryForm.entry_date}
+                                                    onChange={e => setEntryForm({...entryForm, entry_date: e.target.value})}
+                                                    required
+                                                />
+                                            ) : (
+                                                <div className="form-control bg-light text-muted fst-italic small d-flex align-items-center">
+                                                    <i className="bi bi-lock-fill me-1"></i> Server Time (Auto)
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div className="mb-3">
+                                        <label className="form-label small fw-bold text-muted">Description</label>
+                                        <input type="text" className="form-control" placeholder="NOTES..." value={entryForm.description} onChange={e => setEntryForm({...entryForm, description: e.target.value.toUpperCase()})} />
+                                    </div>
+                                    <div className="d-grid mt-4">
+                                        <button type="submit" className={`btn py-2 fw-bold ${txnType === 'IN' ? 'btn-success' : 'btn-danger'}`}>{txnType === 'IN' ? 'Receive Payment' : 'Record Expense'}</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             )}
         </div>
     );

@@ -87,21 +87,33 @@ class LedgerController extends Controller
     }
 
     // --- 3. MAKE ENTRY ---
+    // --- 3. MAKE ENTRY ---
     public function storeEntry(Request $request)
     {
         $request->validate([
             'txn_type' => 'required|in:IN,OUT',
             'amount' => 'required|numeric',
-            'entry_date' => 'required|date'
+            // 'entry_date' => 'required|date' // Remove 'required' validation here, we handle it below
         ]);
 
-        // Entry is saved with Current User ID (to track who made it)
+        $user = $request->user();
+
+        // SECURITY CHECK:
+        // If User is Level 0 (Staff), FORCE Server Time.
+        // If User is Level 1 (Admin), allow them to choose the date (Backdating).
+        if ($user->role === 'level_0') {
+            $finalDate = now(); // uses Server Time (Asia/Kolkata set in app.php)
+        } else {
+            // Admin can specify date, or default to now if empty
+            $finalDate = $request->entry_date ? $request->entry_date : now();
+        }
+
         DB::table('ledger_entries')->insert([
-            'user_id' => $request->user()->id,
-            'ledger_account_id' => $request->ledger_account_id, // Can be null
+            'user_id' => $user->id,
+            'ledger_account_id' => $request->ledger_account_id,
             'txn_type' => $request->txn_type,
             'amount' => $request->amount,
-            'entry_date' => $request->entry_date,
+            'entry_date' => $finalDate, // Use the secure variable
             'description' => strtoupper($request->description),
             'created_at' => now(),
             'updated_at' => now()
