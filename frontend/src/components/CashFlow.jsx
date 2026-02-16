@@ -74,27 +74,21 @@ export default function CashFlow() {
     const entriesWithBalance = useMemo(() => {
         if (loading || data.entries.length === 0) return [];
 
-        // If filtered (Search), we can't accurately calculate running balance
-        // because we might be missing the "previous" entries.
         if (isFiltered) {
             return data.entries;
         }
 
         let currentRunningBalance = data.stats.all.balance; // Start with Global Balance
 
-        // Map entries and calculate backwards
         return data.entries.map((entry) => {
             const entryWithBal = {
                 ...entry,
                 running_balance: currentRunningBalance
             };
 
-            // Reverse the math for the next row (older row)
             if (entry.txn_type === 'IN') {
-                // If money came IN, balance BEFORE this was Less
                 currentRunningBalance = currentRunningBalance - Number(entry.amount);
             } else {
-                // If money went OUT, balance BEFORE this was More
                 currentRunningBalance = currentRunningBalance + Number(entry.amount);
             }
 
@@ -125,11 +119,18 @@ export default function CashFlow() {
         const d = new Date(dateStr);
         return d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', hour12: true});
     };
+
+    // --- FIXED TIME FORMATTER (For Desktop "Entry By") ---
     const formatSystemTime = (dateStr) => {
         if(!dateStr) return "";
-        let s = dateStr.endsWith('Z') ? dateStr : dateStr + 'Z';
-        const d = new Date(s);
+        const d = new Date(dateStr);
         return d.toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true });
+    };
+
+    // --- HELPER TO TRIM NAME ---
+    const truncateText = (text, limit) => {
+        if(!text) return 'Unknown';
+        return text.length > limit ? text.substring(0, limit) + '...' : text;
     };
 
     // --- HANDLERS ---
@@ -262,7 +263,15 @@ export default function CashFlow() {
                                             {entry.account_mobile && <small className="text-muted"><i className="bi bi-phone"></i> {entry.account_mobile}</small>}
                                         </td>
                                         <td>{entry.description || '-'}</td>
-                                        <td className="small text-secondary"><div className="fw-bold text-dark fst-italic">{entry.created_by || 'Unknown'}</div><div className="text-muted" style={{fontSize: '0.7rem'}}>{formatSystemTime(entry.created_at)}</div></td>
+
+                                        {/* TRIMMED NAME COLUMN */}
+                                        <td className="small text-secondary">
+                                            <div className="fw-bold text-dark fst-italic" title={entry.created_by}>
+                                                {truncateText(entry.created_by, 10)}
+                                            </div>
+                                            <div className="text-muted" style={{fontSize: '0.7rem'}}>{formatSystemTime(entry.created_at)}</div>
+                                        </td>
+
                                         <td className="text-center">{entry.txn_type === 'IN' ? <span className="badge bg-success-subtle text-success">CREDIT</span> : <span className="badge bg-danger-subtle text-danger">DEBIT</span>}</td>
                                         <td className={`text-end pe-3 fw-bold ${entry.txn_type === 'IN' ? 'text-success' : 'text-danger'}`}>{entry.txn_type === 'IN' ? '+' : '-'} ₹{Number(entry.amount).toLocaleString()}</td>
 
@@ -285,7 +294,8 @@ export default function CashFlow() {
                     <div className="d-block d-md-none bg-light p-2 pb-5">
                         {loading ? (<div className="text-center py-5">Loading...</div>) : displayEntries.length > 0 ? (displayEntries.map((entry) => {
                             const dateStr = formatEntryDate(entry.entry_date);
-                            const timeStr = formatEntryTime(entry.entry_date); // SHOWS TIME
+                            const timeStr = formatEntryTime(entry.created_at); // SHOWS TIME
+
                             return (
                                 <div className="card shadow-sm border-0 mb-2 rounded-3" key={entry.id}>
                                     <div className="card-body p-2 px-3">
@@ -296,7 +306,13 @@ export default function CashFlow() {
                                                 <small className="text-secondary fw-bold" style={{fontSize: '0.65rem'}}>{timeStr}</small>
                                             </div>
                                         </div>
-                                        <div className="d-flex justify-content-between align-items-center mt-2">
+
+                                        {/* NEW: Description Row */}
+                                        <div className="small text-dark text-uppercase font-monospace mb-2" style={{fontSize:'0.85rem'}}>
+                                            {entry.description || '-'}
+                                        </div>
+
+                                        <div className="d-flex justify-content-between align-items-center">
                                             <div className="d-flex align-items-center">
                                                 <span className={`badge ${entry.txn_type === 'IN' ? 'bg-success-subtle text-success' : 'bg-danger-subtle text-danger'} me-2`} style={{fontSize:'0.7rem'}}>{entry.txn_type === 'IN' ? 'IN' : 'OUT'}</span>
                                                 <small className="text-secondary fst-italic" style={{fontSize: '0.7rem'}}>{entry.created_by}</small>
